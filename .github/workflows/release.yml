@@ -65,9 +65,17 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/release.keystore
-            echo "keystore_path=/tmp/release.keystore" >> $GITHUB_OUTPUT
+            echo "Decoding KEYSTORE_BASE64 secret..."
+            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > /tmp/release.keystore
+            if [ -s /tmp/release.keystore ]; then
+              echo "Keystore decoded successfully ($(stat -c%s /tmp/release.keystore) bytes)"
+              echo "keystore_path=/tmp/release.keystore" >> $GITHUB_OUTPUT
+            else
+              echo "Decoded keystore is empty, falling back to debug signing"
+              echo "keystore_path=" >> $GITHUB_OUTPUT
+            fi
           else
+            echo "No KEYSTORE_BASE64 secret provided, using fallback signing"
             echo "keystore_path=" >> $GITHUB_OUTPUT
           fi
 
