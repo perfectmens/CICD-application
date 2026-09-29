@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/constants.dart';
 import '../../data/repositories/update_repository.dart';
 import '../../domain/models/greeting.dart';
@@ -64,6 +65,15 @@ class HomeViewModel extends ChangeNotifier {
 
   /// Initial load or pull-to-refresh
   Future<void> loadInitialData() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _currentVersionName = packageInfo.version;
+      _currentVersionCode = int.tryParse(packageInfo.buildNumber) ?? AppConstants.currentVersionCode;
+      notifyListeners();
+    } catch (_) {
+      // Fallback to constants if unable to read package info
+    }
+
     await Future.wait([
       checkHealth(),
       fetchGreetings(),

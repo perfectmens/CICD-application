@@ -17,8 +17,8 @@ class AppConstants {
     return 'http://127.0.0.1:$port';
   }
 
-  // Current client build defaults (aligned with pubspec.yaml v0.0.1+1)
-  static const String currentVersionName = '0.0.1';
+  // Current client build defaults (aligned with pubspec.yaml v0.0.0.1+1)
+  static const String currentVersionName = '0.0.0.1';
   static const int currentVersionCode = 1;
 }
 

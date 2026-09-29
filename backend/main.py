@@ -26,13 +26,13 @@ GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 # On startup, auto-synced from GitHub Releases via GitHub API (lifespan below).
 # DEFAULT_STATE is the cold-start fallback when GitHub is unreachable.
 DEFAULT_STATE = {
-    "latestVersionName": "0.0.1",
-    "latestVersionCode": 14,
+    "latestVersionName": "0.0.0.1",
+    "latestVersionCode": 1,
     "minSupportedCode": 1,
     "isMandatory": False,
-    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.1/app-release-v0.0.1.apk",
+    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.0.1/app-release-v0.0.0.1.apk",
     "sha256": "5ab13880e875f828decc237373320872cff8bba07b8986ffb90073ee0ed25841",
-    "releaseNotes": "Release v0.0.1 (Build 14) — Built with Flutter, Dual-Tone Neumorphic UI, and MVVM architecture.",
+    "releaseNotes": "Release v0.0.0.1 (Build 1) — Built with Flutter, Dual-Tone Neumorphic UI, and MVVM architecture.",
     "publishedAt": datetime.now(timezone.utc).isoformat(),
     "distributionSource": "github_releases"
 }

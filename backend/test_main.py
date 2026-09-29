@@ -33,27 +33,27 @@ class TestRemoteUpdateBackend(unittest.TestCase):
             self.assertEqual(data["version"], "1.0.0")
 
     def test_version_check_same_version(self):
-        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.1&version_code=1"
+        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.0.1&version_code=1"
         with urllib.request.urlopen(url) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode())
-            self.assertEqual(data["latestVersionName"], "0.0.1")
+            self.assertEqual(data["latestVersionName"], "0.0.0.1")
             self.assertEqual(data["latestVersionCode"], 1)
             self.assertFalse(data["hasUpdate"])
             self.assertFalse(data["isMandatory"])
 
     def test_version_check_older_version(self):
-        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.0&version_code=0"
+        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.0.0&version_code=0"
         with urllib.request.urlopen(url) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode())
             self.assertTrue(data["hasUpdate"])
-            self.assertEqual(data["latestVersionName"], "0.0.1")
+            self.assertEqual(data["latestVersionName"], "0.0.0.1")
 
     def test_admin_bump_version_and_detect_update(self):
-        # Simulate publishing version 0.0.2 with code 2
+        # Simulate publishing version 0.0.0.2 with code 2
         payload = json.dumps({
-            "latestVersionName": "0.0.2",
+            "latestVersionName": "0.0.0.2",
             "latestVersionCode": 2,
             "releaseNotes": "Automated update test"
         }).encode()
@@ -66,21 +66,21 @@ class TestRemoteUpdateBackend(unittest.TestCase):
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
 
-        # Now client with 0.0.1 (code 1) should detect the update
-        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.1&version_code=1"
+        # Now client with 0.0.0.1 (code 1) should detect the update
+        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.0.1&version_code=1"
         with urllib.request.urlopen(url) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode())
             self.assertTrue(data["hasUpdate"])
-            self.assertEqual(data["latestVersionName"], "0.0.2")
+            self.assertEqual(data["latestVersionName"], "0.0.0.2")
             self.assertEqual(data["latestVersionCode"], 2)
 
     def test_github_release_publish(self):
         # Simulate GitHub Actions pushing a newly published release
         payload = json.dumps({
-            "versionName": "0.0.3",
+            "versionName": "0.0.0.3",
             "versionCode": 3,
-            "downloadUrl": "https://github.com/perfectmens/CICD-application/releases/download/v0.0.3/app-release-v0.0.3.apk",
+            "downloadUrl": "https://github.com/perfectmens/CICD-application/releases/download/v0.0.0.3/app-release-v0.0.0.3.apk",
             "sha256": "gh_release_sha_256",
             "releaseNotes": "Automated build from commit xyz"
         }).encode()
@@ -97,12 +97,12 @@ class TestRemoteUpdateBackend(unittest.TestCase):
             self.assertIn("github.com/perfectmens/CICD-application", data["downloadUrl"])
 
         # Client queries via LAN and receives the GitHub release Internet URL
-        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.1&version_code=1"
+        url = f"{BASE_URL}/api/v1/version/check?current_version=0.0.0.1&version_code=1"
         with urllib.request.urlopen(url) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode())
             self.assertTrue(data["hasUpdate"])
-            self.assertEqual(data["latestVersionName"], "0.0.3")
+            self.assertEqual(data["latestVersionName"], "0.0.0.3")
             self.assertTrue(data["downloadUrl"].startswith("https://github.com/"))
 
     def test_download_apk_endpoint(self):

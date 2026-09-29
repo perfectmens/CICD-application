@@ -17,10 +17,10 @@ This project is a sample native Android application and companion backend servic
 ## Current Version
 
 ```text
-0.0.1
+0.0.0.1
 ```
 * **Application ID**: `com.example.remoteupdatedemo`
-* **Version Name**: `0.0.1`
+* **Version Name**: `0.0.0.1`
 * **Version Code**: `1`
 
 ---
@@ -44,7 +44,7 @@ The application features a clean, responsive Jetpack Compose Material 3 UI displ
 │                   GitHub Repository                    │
 │   (https://github.com/perfectmens/CICD-application)    │
 │                           │                            │
-│                           ▼ Git Release Tag (e.g. v0.0.2)
+│                           ▼ Git Release Tag (e.g. v0.0.0.2)
 │                  GitHub Actions Runner                 │
 │         • Compiles & signs APK                         │
 │         • Computes SHA-256                             │
@@ -62,8 +62,8 @@ The application features a clean, responsive Jetpack Compose Material 3 UI displ
 │                           │   │                           │
 │  Maintains authoritative  │   │  Hosts immutable APK:     │
 │  version manifest:        │   │  https://github.com/.../  │
-│  latest: v0.0.2           │   │  releases/download/v0.0.2/│
-│  downloadUrl: GitHub URL  │   │  app-release-v0.0.2.apk   │
+│  latest: v0.0.0.2           │   │  releases/download/v0.0.0.2/│
+│  downloadUrl: GitHub URL  │   │  app-release-v0.0.0.2.apk   │
 └─────────────┬─────────────┘   └─────────────┬─────────────┘
               │                               │
               │ 1. Check for Update (LAN)     │ 2. Download APK (Internet)
@@ -97,7 +97,7 @@ The application features a clean, responsive Jetpack Compose Material 3 UI displ
 11. Implement Update button
 12. Download APK from the application
 13. Trigger Android installation
-14. Test upgrade from 0.0.1 → 0.0.2
+14. Test upgrade from 0.0.0.1 → 0.0.0.2
 15. Test rollback/recovery scenarios
 ```
 
@@ -113,7 +113,7 @@ Every API contract is defined in `api-mapping.yaml` as the single source of trut
 | `version.update.check` | `GET` | `/api/v1/version/check` | Compares client `version_code` against server release manifest. |
 | `version.metadata.latest`| `GET` | `/api/v1/updates/latest` | Retrieves full changelog and metadata for latest release. |
 | `version.github.publish`| `POST` | `/api/v1/github/release-published` | Webhook invoked by GitHub Actions when an APK is released. |
-| `version.admin.update` | `POST` | `/api/v1/admin/version` | Simulator endpoint to bump version (e.g. simulate v0.0.2). |
+| `version.admin.update` | `POST` | `/api/v1/admin/version` | Simulator endpoint to bump version (e.g. simulate v0.0.0.2). |
 | `version.download.apk` | `GET` | `/api/v1/updates/download/latest.apk` | Local fallback APK binary download endpoint. |
 
 To validate API governance:
@@ -149,12 +149,12 @@ python backend/test_main.py
 ### Simulating a GitHub Actions Release (Internet Download URL)
 You can test the client's "Update Available" screen at any time by simulating GitHub Actions publishing a new release:
 ```bash
-# Simulate GitHub Actions publishing version 0.0.2 to GitHub Releases
+# Simulate GitHub Actions publishing version 0.0.0.2 to GitHub Releases
 curl -X POST http://192.168.68.64:8080/api/v1/github/release-published \
   -H "Content-Type: application/json" \
-  -d '{"versionName": "0.0.2", "versionCode": 2, "releaseNotes": "Built and signed via GitHub Actions", "downloadUrl": "https://github.com/perfectmens/CICD-application/releases/download/v0.0.2/app-release-v0.0.2.apk"}'
+  -d '{"versionName": "0.0.0.2", "versionCode": 2, "releaseNotes": "Built and signed via GitHub Actions", "downloadUrl": "https://github.com/perfectmens/CICD-application/releases/download/v0.0.0.2/app-release-v0.0.0.2.apk"}'
 
-# Reset back to baseline v0.0.1
+# Reset back to baseline v0.0.0.1
 curl -X POST http://192.168.68.64:8080/api/v1/admin/reset
 ```
 
