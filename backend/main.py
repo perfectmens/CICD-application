@@ -36,14 +36,14 @@ GITHUB_REPO = "perfectmens/CICD-application"
 
 # In-memory release state (updated via GitHub Actions webhook or admin endpoint)
 DEFAULT_STATE = {
-    "latestVersionName": "0.0.1",
-    "latestVersionCode": 1,
+    "latestVersionName": "0.0.4",
+    "latestVersionCode": 4,
     "minSupportedCode": 1,
     "isMandatory": False,
     # Primary distribution through GitHub Releases over the Internet:
-    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.1/app-release-v0.0.1.apk",
-    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "releaseNotes": "Initial release (v0.0.1) for Remote Update Demo.\n• Base MVVM architecture\n• Jetpack Material 3 UI\n• Connected Docker backend on LAN\n• Internet updates via GitHub Actions",
+    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.4/app-release-v0.0.4.apk",
+    "sha256": "",
+    "releaseNotes": "v0.0.4 — Full OTA update flow\n• In-app update detection via Docker backend\n• GitHub Actions notifies backend on every release\n• Download progress with SHA-256 verification\n• Seamless install via PackageInstaller API",
     "publishedAt": datetime.now(timezone.utc).isoformat(),
     "distributionSource": "github_releases"
 }
@@ -115,25 +115,25 @@ class GreetingsResponse(BaseModel):
 
 
 GREETINGS_POOL = [
-    GreetingItem(id=1, text="Hello and welcome to Remote Update Demo v0.0.2!", category="Welcome", emoji="👋"),
+    GreetingItem(id=1, text="v0.0.4 is live! Full OTA update flow is now operational.", category="Release", emoji="🚀"),
     GreetingItem(id=2, text="Your Docker backend on LAN is delivering live broadcasts.", category="System", emoji="🐳"),
-    GreetingItem(id=3, text="Continuous Delivery makes mobile releases fast and painless.", category="DevOps", emoji="🚀"),
-    GreetingItem(id=4, text="Security first: APKs are signed with production keystore certs.", category="Security", emoji="🔒"),
+    GreetingItem(id=3, text="GitHub Actions now notifies this backend the moment a release is published.", category="CI/CD", emoji="⚙️"),
+    GreetingItem(id=4, text="APK signing certificate is now consistent across all builds — no more conflicts!", category="Security", emoji="🔒"),
     GreetingItem(id=5, text="Have an incredible, productive day building amazing software!", category="Motivation", emoji="☀️"),
     GreetingItem(id=6, text="Jetpack Compose Material 3 brings adaptive native beauty.", category="UI", emoji="🎨"),
     GreetingItem(id=7, text="Over-the-air updates let your users stay on the latest build instantly.", category="Feature", emoji="📲"),
     GreetingItem(id=8, text="Architecture matters: Unidirectional MVVM keeps code clean.", category="Architecture", emoji="🏛️"),
-    GreetingItem(id=9, text="Code verified with Android Lint & JUnit tests on every commit.", category="Testing", emoji="✅"),
-    GreetingItem(id=10, text="GitHub Actions handles the heavy lifting of signing and releases.", category="CI/CD", emoji="⚙️"),
+    GreetingItem(id=9, text="Every APK download is SHA-256 verified before installation.", category="Security", emoji="🔑"),
+    GreetingItem(id=10, text="Download progress is streamed in real-time to the UI.", category="Feature", emoji="📊"),
     GreetingItem(id=11, text="Greetings from your local Docker microservice container!", category="Docker", emoji="📦"),
     GreetingItem(id=12, text="Zero downtime version deployments are the future of mobile engineering.", category="DevOps", emoji="⚡"),
     GreetingItem(id=13, text="Clear architecture boundaries mean zero regression bugs.", category="Architecture", emoji="🛡️"),
-    GreetingItem(id=14, text="Every package upgrade is cryptographically verified with SHA-256.", category="Security", emoji="🔑"),
+    GreetingItem(id=14, text="PackageInstaller API handles in-place Android app replacement seamlessly.", category="Android", emoji="🤖"),
     GreetingItem(id=15, text="You've mastered full-stack Android CI/CD pipelines!", category="Celebration", emoji="🎉"),
     GreetingItem(id=16, text="Seamless LAN communication paired with global GitHub CDN delivery.", category="Networking", emoji="🌐"),
     GreetingItem(id=17, text="Kotlin Coroutines & Flow make asynchronous networking smooth.", category="Kotlin", emoji="🌊"),
-    GreetingItem(id=18, text="PackageInstaller API handles in-place Android app replacement seamlessly.", category="Android", emoji="🤖"),
-    GreetingItem(id=19, text="Live version control keeps all distributed clients synchronized.", category="Governance", emoji="📊"),
+    GreetingItem(id=18, text="The .gitattributes binary marker keeps keystores byte-perfect across platforms.", category="DevOps", emoji="🛠️"),
+    GreetingItem(id=19, text="Live version control keeps all distributed clients synchronized.", category="Governance", emoji="📡"),
     GreetingItem(id=20, text="Keep innovating and building extraordinary Android experiences!", category="Inspiration", emoji="✨")
 ]
 

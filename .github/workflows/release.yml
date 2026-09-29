@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Semantic Version Name (e.g. 0.0.3)'
+        description: 'Semantic Version Name (e.g. 0.0.4)'
         required: true
-        default: '0.0.3'
+        default: '0.0.4'
       version_code:
-        description: 'Monotonic Version Code (e.g. 3)'
+        description: 'Monotonic Version Code (e.g. 4)'
         required: true
-        default: '3'
+        default: '4'
 
 permissions:
   contents: write
@@ -173,3 +173,42 @@ jobs:
             Built, tested with Android Lint, and signed automatically via GitHub Actions CI/CD.
           draft: false
           prerelease: false
+
+      - name: Notify Docker Backend of New Release
+        # Best-effort: notifies the LAN Docker backend so it serves the new version
+        # to all connected Android clients immediately after GitHub Release is published.
+        # Will not fail the build if the backend is unreachable from GitHub Actions.
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL || 'http://192.168.68.64:8080' }}
+        run: |
+          VERSION="${{ steps.versioning.outputs.version_name }}"
+          CODE="${{ steps.versioning.outputs.version_code }}"
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/app-release-v${VERSION}.apk"
+          SHA256="${{ steps.artifacts.outputs.apk_sha256 }}"
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "versionName": "${VERSION}",
+            "versionCode": ${CODE},
+            "downloadUrl": "${APK_URL}",
+            "sha256": "${SHA256}",
+            "releaseNotes": "v${VERSION} \u2014 Automated release built and signed via GitHub Actions.",
+            "isMandatory": false
+          }
+          EOF
+          )
+
+          echo "Notifying backend at ${BACKEND_URL} about v${VERSION}..."
+          HTTP_STATUS=$(curl -s -o /tmp/backend_response.json -w "%{http_code}" \
+            --max-time 10 \
+            -X POST "${BACKEND_URL}/api/v1/github/release-published" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" || echo "000")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "\u2705 Backend notified successfully (HTTP $HTTP_STATUS)"
+            cat /tmp/backend_response.json
+          else
+            echo "\u26a0\ufe0f Backend notification skipped (HTTP $HTTP_STATUS) — backend may be offline or unreachable from GitHub Actions"
+            echo "Android clients will still discover the update via the backend's default state on next Docker restart."
+          fi

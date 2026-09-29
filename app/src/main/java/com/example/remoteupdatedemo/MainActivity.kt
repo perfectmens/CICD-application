@@ -197,14 +197,14 @@ fun MainScreen(
                 onClick = onOpenSettings
             )
 
-            // v0.0.3 — signing-fix badge
+            // v0.0.4 — OTA update badge
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = EmeraldGreen.copy(alpha = 0.12f),
                 border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.4f))
             ) {
                 Text(
-                    text = "✅ v0.0.3 · Signing certificate fixed — seamless OTA updates enabled",
+                    text = "🚀 v0.0.4 · Full OTA update flow — tap \"Check for Update\" to try it!",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = EmeraldDark,
