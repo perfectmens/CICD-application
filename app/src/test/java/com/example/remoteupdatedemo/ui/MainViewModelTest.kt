@@ -4,6 +4,7 @@ import com.example.remoteupdatedemo.data.model.Greeting
 import com.example.remoteupdatedemo.data.model.ServerHealth
 import com.example.remoteupdatedemo.data.model.UpdateInfo
 import com.example.remoteupdatedemo.data.repository.UpdateRepository
+import com.example.remoteupdatedemo.ui.UpdateStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -127,7 +128,7 @@ class MainViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state.updateStatus is UpdateStatus.UpToDate)
         val upToDate = state.updateStatus as UpdateStatus.UpToDate
-        assertEquals("Remote update functionality will be added later.", upToDate.message)
+        assertEquals(UpdateStrings.UP_TO_DATE_MESSAGE, upToDate.message)
         assertEquals("0.0.1", upToDate.latestVersionName)
     }
 
@@ -174,7 +175,7 @@ class MainViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state.updateStatus is UpdateStatus.Error)
         val error = state.updateStatus as UpdateStatus.Error
-        assertTrue(error.message.contains("Remote update functionality will be added later"))
+        assertTrue(error.message.contains(UpdateStrings.NETWORK_ERROR_PREFIX))
     }
 
     @Test

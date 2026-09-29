@@ -127,7 +127,7 @@ class MainViewModel(
                                 UpdateStatus.UpdateAvailable(updateInfo)
                             } else {
                                 UpdateStatus.UpToDate(
-                                    message = "Remote update functionality will be added later.",
+                                    message = UpdateStrings.UP_TO_DATE_MESSAGE,
                                     latestVersionName = updateInfo.latestVersionName,
                                     latestVersionCode = updateInfo.latestVersionCode
                                 )
@@ -136,14 +136,13 @@ class MainViewModel(
                     }
                 },
                 onFailure = { error ->
-                    // Backend offline or network failure
                     _uiState.update { state ->
                         state.copy(
                             backendHealth = BackendHealthState.Disconnected(
                                 reason = error.localizedMessage ?: "Network unreachable"
                             ),
                             updateStatus = UpdateStatus.Error(
-                                message = "Remote update functionality will be added later. (Backend server offline)",
+                                message = UpdateStrings.NETWORK_ERROR_MESSAGE,
                                 technicalDetail = error.localizedMessage
                             )
                         )

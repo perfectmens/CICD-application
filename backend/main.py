@@ -9,18 +9,108 @@ Published APKs and release assets are hosted on GitHub Releases (Internet)
 and generated automatically via GitHub Actions CI/CD.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import os
 import random
 from typing import Optional, List
+import httpx
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+GITHUB_REPO = "perfectmens/CICD-application"
+GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+# In-memory release state.
+# On startup, auto-synced from GitHub Releases via GitHub API (lifespan below).
+# DEFAULT_STATE is the cold-start fallback when GitHub is unreachable.
+# versionCode = git rev-list --count HEAD at the time the tag was pushed.
+DEFAULT_STATE = {
+    "latestVersionName": "0.0.5",
+    "latestVersionCode": 12,   # estimated fallback; startup sync overwrites with real value
+    "minSupportedCode": 1,
+    "isMandatory": False,
+    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.5/app-release-v0.0.5.apk",
+    "sha256": "",
+    "releaseNotes": "v0.0.5 - Auto-sync from GitHub, shared string constants, stale copy fixed",
+    "publishedAt": datetime.now(timezone.utc).isoformat(),
+    "distributionSource": "github_releases"
+}
+
+current_release_state = dict(DEFAULT_STATE)
+
+
+async def sync_from_github() -> bool:
+    """
+    Fetch the latest GitHub Release and populate current_release_state
+    from the attached version.json asset. Called on every Docker container start.
+    No manual DEFAULT_STATE update needed after this is in place.
+    Returns True on success, False on any failure (fallback to DEFAULT_STATE).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            api_resp = await client.get(
+                GITHUB_API,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "RemoteUpdateDemoBackend/1.0"
+                }
+            )
+            if api_resp.status_code != 200:
+                print(f"[startup] GitHub API returned {api_resp.status_code}, using DEFAULT_STATE")
+                return False
+
+            release = api_resp.json()
+
+            # Find version.json asset URL in the release assets list
+            version_json_url = next(
+                (a["browser_download_url"] for a in release.get("assets", [])
+                 if a["name"] == "version.json"),
+                None
+            )
+            if not version_json_url:
+                print("[startup] version.json not found in latest release, using DEFAULT_STATE")
+                return False
+
+            vj_resp = await client.get(version_json_url)
+            if vj_resp.status_code != 200:
+                print(f"[startup] version.json fetch returned {vj_resp.status_code}, using DEFAULT_STATE")
+                return False
+
+            vj = vj_resp.json()
+            current_release_state.update({
+                "latestVersionName": vj["versionName"],
+                "latestVersionCode": int(vj["versionCode"]),
+                "downloadUrl": vj["downloadUrl"],
+                "sha256": vj.get("sha256", ""),
+                "releaseNotes": vj.get("releaseNotes", ""),
+                "publishedAt": vj.get("publishedAt", datetime.now(timezone.utc).isoformat()),
+                "distributionSource": "github_releases_auto"
+            })
+            sha_preview = vj.get("sha256", "")[:12]
+            print(
+                f"[startup] Synced from GitHub: "
+                f"v{vj['versionName']} (code {vj['versionCode']}, sha256 {sha_preview}...)"
+            )
+            return True
+    except Exception as exc:
+        print(f"[startup] GitHub sync failed ({exc}), using DEFAULT_STATE")
+        return False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Auto-sync latest GitHub Release on every Docker container start."""
+    await sync_from_github()
+    yield
+
 
 app = FastAPI(
     title="Remote Update Demo Backend",
     version="1.0.0",
     description="Backend microservice for APK update checking and GitHub Releases distribution",
+    lifespan=lifespan,
 )
 
 # Enable CORS for local testing, LAN access, emulator, and web dashboards
@@ -31,24 +121,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-GITHUB_REPO = "perfectmens/CICD-application"
-
-# In-memory release state (updated via GitHub Actions webhook or admin endpoint)
-DEFAULT_STATE = {
-    "latestVersionName": "0.0.4",
-    "latestVersionCode": 8,   # = git rev-list --count HEAD at v0.0.4 tag
-    "minSupportedCode": 1,
-    "isMandatory": False,
-    # Primary distribution through GitHub Releases over the Internet:
-    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.4/app-release-v0.0.4.apk",
-    "sha256": "ae4660f459adbe055d92433a4180684e077e67aed0c7b008742b162f5dffa850",
-    "releaseNotes": "v0.0.4 — Full OTA update flow\n• In-app update detection via Docker backend\n• GitHub Actions notifies backend on every release\n• Download progress with SHA-256 verification\n• Seamless install via PackageInstaller API",
-    "publishedAt": datetime.now(timezone.utc).isoformat(),
-    "distributionSource": "github_releases"
-}
-
-current_release_state = dict(DEFAULT_STATE)
 
 
 # -----------------------------------------------------------------------------
@@ -88,7 +160,7 @@ class VersionUpdateRequest(BaseModel):
     latestVersionCode: int
     isMandatory: Optional[bool] = False
     downloadUrl: Optional[str] = None
-    sha256: Optional[str] = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    sha256: Optional[str] = ""
     releaseNotes: Optional[str] = "Simulated update release notes."
 
 
@@ -115,21 +187,21 @@ class GreetingsResponse(BaseModel):
 
 
 GREETINGS_POOL = [
-    GreetingItem(id=1, text="v0.0.4 is live! Full OTA update flow is now operational.", category="Release", emoji="🚀"),
+    GreetingItem(id=1, text="v0.0.5 is live! Backend now auto-syncs from GitHub on every start.", category="Release", emoji="🚀"),
     GreetingItem(id=2, text="Your Docker backend on LAN is delivering live broadcasts.", category="System", emoji="🐳"),
-    GreetingItem(id=3, text="GitHub Actions now notifies this backend the moment a release is published.", category="CI/CD", emoji="⚙️"),
-    GreetingItem(id=4, text="APK signing certificate is now consistent across all builds — no more conflicts!", category="Security", emoji="🔒"),
+    GreetingItem(id=3, text="GitHub Actions notifies this backend the moment a release is published.", category="CI/CD", emoji="⚙️"),
+    GreetingItem(id=4, text="APK signing certificate is consistent across all builds — no more conflicts!", category="Security", emoji="🔒"),
     GreetingItem(id=5, text="Have an incredible, productive day building amazing software!", category="Motivation", emoji="☀️"),
     GreetingItem(id=6, text="Jetpack Compose Material 3 brings adaptive native beauty.", category="UI", emoji="🎨"),
-    GreetingItem(id=7, text="Over-the-air updates let your users stay on the latest build instantly.", category="Feature", emoji="📲"),
+    GreetingItem(id=7, text="Over-the-air updates let users stay on the latest build instantly.", category="Feature", emoji="📲"),
     GreetingItem(id=8, text="Architecture matters: Unidirectional MVVM keeps code clean.", category="Architecture", emoji="🏛️"),
     GreetingItem(id=9, text="Every APK download is SHA-256 verified before installation.", category="Security", emoji="🔑"),
     GreetingItem(id=10, text="Download progress is streamed in real-time to the UI.", category="Feature", emoji="📊"),
     GreetingItem(id=11, text="Greetings from your local Docker microservice container!", category="Docker", emoji="📦"),
     GreetingItem(id=12, text="Zero downtime version deployments are the future of mobile engineering.", category="DevOps", emoji="⚡"),
-    GreetingItem(id=13, text="Clear architecture boundaries mean zero regression bugs.", category="Architecture", emoji="🛡️"),
+    GreetingItem(id=13, text="Shared string constants keep tests and prod code perfectly in sync.", category="Testing", emoji="✅"),
     GreetingItem(id=14, text="PackageInstaller API handles in-place Android app replacement seamlessly.", category="Android", emoji="🤖"),
-    GreetingItem(id=15, text="You've mastered full-stack Android CI/CD pipelines!", category="Celebration", emoji="🎉"),
+    GreetingItem(id=15, text="You are mastering full-stack Android CI/CD pipelines!", category="Celebration", emoji="🎉"),
     GreetingItem(id=16, text="Seamless LAN communication paired with global GitHub CDN delivery.", category="Networking", emoji="🌐"),
     GreetingItem(id=17, text="Kotlin Coroutines & Flow make asynchronous networking smooth.", category="Kotlin", emoji="🌊"),
     GreetingItem(id=18, text="The .gitattributes binary marker keeps keystores byte-perfect across platforms.", category="DevOps", emoji="🛠️"),
@@ -186,7 +258,7 @@ def check_version(
     latest_code = current_release_state["latestVersionCode"]
     latest_name = current_release_state["latestVersionName"]
 
-    # Android rule: update is available if server code is strictly greater than installed code
+    # Android rule: update available if server code strictly greater than installed code
     has_update = latest_code > version_code
 
     return UpdateCheckResponse(
@@ -227,7 +299,10 @@ def on_github_release_published(req: GitHubReleasePayload):
     """
     current_release_state["latestVersionName"] = req.versionName
     current_release_state["latestVersionCode"] = req.versionCode
-    current_release_state["downloadUrl"] = req.downloadUrl or f"https://github.com/{GITHUB_REPO}/releases/download/v{req.versionName}/app-release-v{req.versionName}.apk"
+    current_release_state["downloadUrl"] = (
+        req.downloadUrl
+        or f"https://github.com/{GITHUB_REPO}/releases/download/v{req.versionName}/app-release-v{req.versionName}.apk"
+    )
     if req.sha256:
         current_release_state["sha256"] = req.sha256
     if req.releaseNotes:
@@ -249,17 +324,16 @@ def on_github_release_published(req: GitHubReleasePayload):
 def update_target_version(req: VersionUpdateRequest):
     """
     Contract ID: version.admin.update
-    Administrative simulator endpoint to dynamically bump target version
-    (e.g., test upgrading from 0.0.1 -> 0.0.2 in learning exercises).
+    Administrative endpoint to manually override release state for testing.
     """
     current_release_state["latestVersionName"] = req.latestVersionName
     current_release_state["latestVersionCode"] = req.latestVersionCode
     if req.isMandatory is not None:
         current_release_state["isMandatory"] = req.isMandatory
-    if req.downloadUrl:
-        current_release_state["downloadUrl"] = req.downloadUrl
-    else:
-        current_release_state["downloadUrl"] = f"https://github.com/{GITHUB_REPO}/releases/download/v{req.latestVersionName}/app-release-v{req.latestVersionName}.apk"
+    current_release_state["downloadUrl"] = (
+        req.downloadUrl
+        or f"https://github.com/{GITHUB_REPO}/releases/download/v{req.latestVersionName}/app-release-v{req.latestVersionName}.apk"
+    )
     if req.sha256:
         current_release_state["sha256"] = req.sha256
     if req.releaseNotes:
@@ -275,12 +349,10 @@ def update_target_version(req: VersionUpdateRequest):
 
 @app.post("/api/v1/admin/reset", tags=["Admin"])
 def reset_to_default_version():
-    """
-    Resets the backend release state back to initial v0.0.1 (code: 1).
-    """
+    """Resets the backend release state to DEFAULT_STATE (v0.0.5 fallback)."""
     global current_release_state
     current_release_state = dict(DEFAULT_STATE)
-    return {"success": True, "message": "Reset to v0.0.4 (code 8)", "state": current_release_state}
+    return {"success": True, "message": "Reset to DEFAULT_STATE", "state": current_release_state}
 
 
 @app.get("/api/v1/updates/download/latest.apk", tags=["Updates"])
