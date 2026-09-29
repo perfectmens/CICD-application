@@ -16,6 +16,10 @@ gen/
 out/
 build/
 app/build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+windows/flutter/ephemeral/
 
 # Gradle files
 .gradle/

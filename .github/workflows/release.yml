@@ -1,4 +1,4 @@
-name: Android CD Release
+name: Flutter CD Release
 
 on:
   push:
@@ -7,20 +7,20 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Semantic Version Name (e.g. 0.0.4)'
+        description: 'Semantic Version Name (e.g. 0.0.1)'
         required: true
-        default: '0.0.4'
+        default: '0.0.1'
       version_code:
-        description: 'Monotonic Version Code (e.g. 4)'
-        required: true
-        default: '4'
+        description: 'Monotonic Version Code (leave empty to derive from git count)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   build-and-publish:
-    name: Build, Sign & Publish Release
+    name: Build, Sign & Publish Flutter Release
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -30,42 +30,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make Gradle Wrapper Executable
-        run: chmod +x gradlew
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
 
       - name: Resolve Release Version
         id: versioning
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V_NAME="${{ github.event.inputs.version_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version_code }}" ]; then
             V_CODE="${{ github.event.inputs.version_code }}"
           else
-            # Extract version from Git tag v0.0.3 -> 0.0.3
-            RAW_TAG="${GITHUB_REF#refs/tags/v}"
-            V_NAME="$RAW_TAG"
-            # Derive monotonic integer code from commit count
             V_CODE=$(git rev-list --count HEAD)
           fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V_NAME="${{ github.event.inputs.version_name }}"
+          else
+            RAW_TAG="${GITHUB_REF#refs/tags/v}"
+            V_NAME="$RAW_TAG"
+          fi
+
           echo "Building versionName: $V_NAME, versionCode: $V_CODE"
           echo "version_name=$V_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
 
-      # ─────────────────────────────────────────────────────────────────────
-      # SIGNING: Priority order:
-      #   1. KEYSTORE_BASE64 GitHub secret  (most reliable, byte-perfect)
-      #   2. Committed release.keystore binary (fallback, git-binary-safe)
-      # The .gitattributes file marks *.keystore as binary, preventing
-      # CRLF line-ending corruption which was the root cause of cert mismatches.
-      # ─────────────────────────────────────────────────────────────────────
       - name: Prepare Signing Keystore
         id: keystore
         env:
@@ -84,7 +80,6 @@ jobs:
             exit 1
           fi
 
-          # Verify the keystore is readable
           KEYSTORE_SIZE=$(stat -c%s "$KEYSTORE_DEST")
           echo "Keystore size: ${KEYSTORE_SIZE} bytes"
           if [ "$KEYSTORE_SIZE" -lt 100 ]; then
@@ -94,6 +89,9 @@ jobs:
 
           echo "keystore_path=$KEYSTORE_DEST" >> $GITHUB_OUTPUT
 
+      - name: Install Dependencies
+        run: flutter pub get
+
       - name: Assemble Release APK
         env:
           KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore_path }}
@@ -101,17 +99,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'remoteupdate' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'remoteupdate123' }}
         run: |
-          ./gradlew assembleRelease \
-            -PversionName="${{ steps.versioning.outputs.version_name }}" \
-            -PversionCode="${{ steps.versioning.outputs.version_code }}"
-
-      - name: Verify APK Signing Certificate
-        run: |
-          APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
-          echo "Verifying APK: $APK"
-          $JAVA_HOME/bin/keytool -printcert -jarfile "$APK" 2>/dev/null | grep -E "SHA|Owner|Issuer" || true
-          # Show the certificate fingerprint for traceability
-          echo "APK signing verified."
+          flutter build apk --release \
+            --build-name="${{ steps.versioning.outputs.version_name }}" \
+            --build-number="${{ steps.versioning.outputs.version_code }}"
 
       - name: Securely Wipe Ephemeral Keystore File
         if: always()
@@ -122,7 +112,7 @@ jobs:
         run: |
           VERSION="${{ steps.versioning.outputs.version_name }}"
           CODE="${{ steps.versioning.outputs.version_code }}"
-          APK_SRC=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          APK_SRC=$(find build/app/outputs/flutter-apk/ -name "*release*.apk" | head -n 1)
 
           APK_DEST="app-release-v${VERSION}.apk"
           cp "$APK_SRC" "$APK_DEST"
@@ -130,7 +120,7 @@ jobs:
           APK_SHA256=$(sha256sum "$APK_DEST" | awk '{print $1}')
           echo "APK SHA256: $APK_SHA256"
 
-          # Generate version.json release manifest
+          # Standard version manifest for backend and client OTA updates
           cat <<EOF > version.json
           {
             "versionCode": ${CODE},
@@ -138,7 +128,7 @@ jobs:
             "downloadUrl": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${APK_DEST}",
             "sha256": "${APK_SHA256}",
             "isMandatory": false,
-            "releaseNotes": "v${VERSION}: Fixed signing certificate consistency. App can now be updated over-the-air without reinstalling.",
+            "releaseNotes": "Release v${VERSION} (Build ${CODE}) — Built with Flutter, Dual-Tone Neumorphic UI, and MVVM architecture.",
             "publishedAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           }
           EOF
@@ -155,29 +145,24 @@ jobs:
             ${{ steps.artifacts.outputs.apk_path }}
             version.json
           body: |
-            ## Remote Update Demo v${{ steps.versioning.outputs.version_name }} (Build ${{ steps.versioning.outputs.version_code }})
+            ## Flutter Remote Update Demo v${{ steps.versioning.outputs.version_name }} (Build ${{ steps.versioning.outputs.version_code }})
 
-            ### 🔧 What's Fixed in This Release
-            - **Signing certificate mismatch resolved** — added `.gitattributes` to mark the keystore as binary, preventing git CRLF corruption
-            - All future APKs will use the **identical signing certificate**, so you can install updates without uninstalling first
+            ### 🚀 New Features
+            - Built with **Flutter 3.x**
+            - **Dual-Tone Neumorphic UI**: 90% neutral tactile canvas, 5% orange user intent, 3% teal system state
+            - **Mobile MVVM Architecture**: View -> ViewModel -> Repository -> API Client
+            - **API Governance**: Fully synchronized with `api-mapping.yaml`
+            - **In-App OTA Updates**: Streaming download with SHA-256 verification and automatic package installer prompt
 
             ### ⬇️ Download & Install
-            Download the signed release APK below:
             - **Direct APK:** [`${{ steps.artifacts.outputs.apk_path }}`](https://github.com/${{ github.repository }}/releases/download/v${{ steps.versioning.outputs.version_name }}/${{ steps.artifacts.outputs.apk_path }})
             - **SHA-256:** `${{ steps.artifacts.outputs.apk_sha256 }}`
             - **Commit:** `${{ github.sha }}`
-
-            > ⚠️ **First-time install of v0.0.3:** If you have an older version installed with a different certificate, you must **uninstall it first**, then install this APK. All subsequent updates after v0.0.3 will install seamlessly.
-
-            ### ✅ Verification
-            Built, tested with Android Lint, and signed automatically via GitHub Actions CI/CD.
           draft: false
           prerelease: false
 
-      - name: Notify Docker Backend of New Release
-        # Best-effort: notifies the LAN Docker backend so it serves the new version
-        # to all connected Android clients immediately after GitHub Release is published.
-        # Will not fail the build if the backend is unreachable from GitHub Actions.
+      - name: Notify Backend of New Release
+        continue-on-error: true
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL || 'http://192.168.68.64:8080' }}
         run: |
@@ -186,29 +171,6 @@ jobs:
           APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/app-release-v${VERSION}.apk"
           SHA256="${{ steps.artifacts.outputs.apk_sha256 }}"
 
-          PAYLOAD=$(cat <<EOF
-          {
-            "versionName": "${VERSION}",
-            "versionCode": ${CODE},
-            "downloadUrl": "${APK_URL}",
-            "sha256": "${SHA256}",
-            "releaseNotes": "v${VERSION} \u2014 Automated release built and signed via GitHub Actions.",
-            "isMandatory": false
-          }
-          EOF
-          )
-
-          echo "Notifying backend at ${BACKEND_URL} about v${VERSION}..."
-          HTTP_STATUS=$(curl -s -o /tmp/backend_response.json -w "%{http_code}" \
-            --max-time 10 \
-            -X POST "${BACKEND_URL}/api/v1/github/release-published" \
+          curl -s -X POST "${BACKEND_URL}/api/v1/github/release-published" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD" || echo "000")
-
-          if [ "$HTTP_STATUS" = "200" ]; then
-            echo "\u2705 Backend notified successfully (HTTP $HTTP_STATUS)"
-            cat /tmp/backend_response.json
-          else
-            echo "\u26a0\ufe0f Backend notification skipped (HTTP $HTTP_STATUS) — backend may be offline or unreachable from GitHub Actions"
-            echo "Android clients will still discover the update via the backend's default state on next Docker restart."
-          fi
+            -d @version.json || echo "Backend notification skipped or unreachable from runner."
