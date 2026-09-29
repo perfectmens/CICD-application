@@ -1,0 +1,304 @@
+# API Mapping YAML Specification & Schema
+# This schema defines the structure and validation constraints for api-mapping.yaml.
+# Version: 1.0.0
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "ApiMappingSchema"
+description: "Authoritative schema definition for api-mapping.yaml contracts"
+type: object
+required:
+  - version
+  - api
+  - domains
+properties:
+  version:
+    type: string
+    description: "Version of the api-mapping specification format (e.g. '1.0')"
+    example: "1.0"
+
+  api:
+    type: object
+    required:
+      - base_url
+      - version
+    properties:
+      base_url:
+        type: string
+        description: "Root path prefix for the API (e.g. '/api')"
+        example: "/api"
+      version:
+        type: string
+        description: "Default API version string (e.g. 'v1')"
+        example: "v1"
+      title:
+        type: string
+        description: "Application / Service API title"
+      description:
+        type: string
+        description: "High-level overview of the API registry"
+
+  domains:
+    type: object
+    description: "Map of business domains (e.g. sales, auth, billing, inventory)"
+    additionalProperties:
+      $ref: "#/definitions/Domain"
+
+definitions:
+  Domain:
+    type: object
+    description: "Functional domain grouping containing dashboards and direct actions"
+    properties:
+      description:
+        type: string
+      dashboards:
+        type: object
+        description: "Dashboard views organized by screen or analytical interface"
+        additionalProperties:
+          $ref: "#/definitions/Dashboard"
+      actions:
+        type: object
+        description: "Direct API actions within the domain outside of specific dashboards"
+        additionalProperties:
+          $ref: "#/definitions/Action"
+
+  Dashboard:
+    type: object
+    description: "A dashboard screen grouping multiple widgets, KPIs, charts, and tables"
+    properties:
+      description:
+        type: string
+      actions:
+        type: object
+        description: "All API actions and widget data sources powering this dashboard"
+        additionalProperties:
+          $ref: "#/definitions/Action"
+
+  Action:
+    type: object
+    required:
+      - id
+      - api
+      - status
+    properties:
+      id:
+        type: string
+        description: "Unique dot-separated action identifier"
+        pattern: "^[a-z0-9_]+(\\.[a-z0-9_]+)+$"
+        example: "sales.dashboard.load"
+      type:
+        type: string
+        description: "Category of action or visualization"
+        enum:
+          - dashboard
+          - kpi
+          - chart
+          - table
+          - drilldown
+          - action
+          - crud
+          - export
+          - realtime
+          - search
+          - summary
+          - aggregation
+      purpose:
+        type: string
+        description: "Human-readable explanation of what this action accomplishes"
+      api:
+        $ref: "#/definitions/ApiEndpoint"
+      parameters:
+        type: array
+        description: "List of parameters accepted by this endpoint"
+        items:
+          $ref: "#/definitions/Parameter"
+      request:
+        $ref: "#/definitions/RequestBody"
+      response:
+        $ref: "#/definitions/ResponseBody"
+      kpi:
+        $ref: "#/definitions/KpiDefinition"
+      visualization:
+        $ref: "#/definitions/VisualizationDefinition"
+      consumers:
+        type: array
+        description: "List of client screens, widgets, or services consuming this API"
+        items:
+          type: string
+        example:
+          - "mobile.sales_dashboard"
+          - "mobile.sales_dashboard.revenue_card"
+      backend:
+        $ref: "#/definitions/BackendBinding"
+      status:
+        type: string
+        description: "Lifecycle status of the action"
+        enum:
+          - active
+          - deprecated
+          - removed
+          - draft
+      deprecated_since:
+        type: string
+        description: "Version or date when deprecated (required if status == deprecated)"
+      replacement:
+        type: string
+        description: "Replacement action ID or endpoint (required if status == deprecated)"
+      removal_target:
+        type: string
+        description: "Target version/date for complete sunset"
+
+  ApiEndpoint:
+    type: object
+    required:
+      - method
+      - path
+    properties:
+      method:
+        type: string
+        enum:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+      path:
+        type: string
+        pattern: "^/"
+        example: "/api/v1/dashboard/sales"
+      auth:
+        type: object
+        properties:
+          required:
+            type: boolean
+            default: true
+          roles:
+            type: array
+            items:
+              type: string
+
+  Parameter:
+    type: object
+    required:
+      - name
+      - type
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+        enum:
+          - string
+          - integer
+          - number
+          - boolean
+          - date
+          - datetime
+          - array
+          - object
+      in:
+        type: string
+        enum:
+          - query
+          - path
+          - header
+          - body
+        default: query
+      required:
+        type: boolean
+        default: false
+      description:
+        type: string
+      default:
+        type: [string, number, boolean, "null"]
+
+  RequestBody:
+    type: object
+    properties:
+      type:
+        type: string
+        description: "Name of DTO / model class"
+      content_type:
+        type: string
+        default: "application/json"
+      schema:
+        type: object
+
+  ResponseBody:
+    type: object
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        description: "Name of response DTO / model class"
+      status_code:
+        type: integer
+        default: 200
+      content_type:
+        type: string
+        default: "application/json"
+      schema:
+        type: object
+
+  KpiDefinition:
+    type: object
+    required:
+      - name
+      - calculation_owner
+    properties:
+      name:
+        type: string
+        description: "Standardized metric name"
+      calculation_owner:
+        type: string
+        enum:
+          - backend
+          - client
+        default: backend
+        description: "Must be 'backend' for business KPIs to guarantee cross-client consistency"
+      unit:
+        type: string
+        description: "Unit of measurement (e.g. percentage, currency_usd, count, seconds)"
+      formula:
+        type: string
+        description: "High-level formula or business logic definition"
+
+  VisualizationDefinition:
+    type: object
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        enum:
+          - line
+          - bar
+          - pie
+          - donut
+          - gauge
+          - table
+          - metric_card
+          - area
+          - scatter
+      x:
+        type: string
+        description: "Field name mapped to the X axis or category"
+      y:
+        type: string
+        description: "Field name mapped to the Y axis or series value"
+      group_by:
+        type: string
+        description: "Field name used for grouping or series segmentation"
+
+  BackendBinding:
+    type: object
+    properties:
+      controller:
+        type: string
+        description: "Backend controller or route module"
+      service:
+        type: string
+        description: "Domain service executing the logic"
+      handler:
+        type: string
+        description: "Specific function/method handling the request"

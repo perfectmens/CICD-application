@@ -1,0 +1,67 @@
+// ==============================================================================
+// TEMPLATE: Model Separation (DTO vs Domain Entity)
+// ==============================================================================
+
+// ------------------------------------------------------------------------------
+// 1. DOMAIN ENTITY (Used in ViewModels and UI)
+// Pure business model, decoupled from wire serialization details.
+// ------------------------------------------------------------------------------
+class FeatureEntity {
+  final String id;
+  final String title;
+  final double amount;
+  final DateTime createdAt;
+
+  const FeatureEntity({
+    required this.id,
+    required this.title,
+    required this.amount,
+    required this.createdAt,
+  });
+}
+
+// ------------------------------------------------------------------------------
+// 2. WIRE DTO (Data Transfer Object)
+// Strictly mirrors the backend response defined in api-mapping.yaml.
+// ------------------------------------------------------------------------------
+class FeatureDto {
+  final String id;
+  final String title;
+  final num amount;
+  final String createdAtString;
+
+  FeatureDto({
+    required this.id,
+    required this.title,
+    required this.amount,
+    required this.createdAtString,
+  });
+
+  factory FeatureDto.fromJson(Map<String, dynamic> json) {
+    return FeatureDto(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? '',
+      amount: json['amount'] as num? ?? 0,
+      createdAtString: json['created_at'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'amount': amount,
+      'created_at': createdAtString,
+    };
+  }
+
+  /// Transforms wire DTO into an immutable Domain Entity
+  FeatureEntity toDomain() {
+    return FeatureEntity(
+      id: id,
+      title: title,
+      amount: amount.toDouble(),
+      createdAt: DateTime.tryParse(createdAtString) ?? DateTime.now(),
+    );
+  }
+}

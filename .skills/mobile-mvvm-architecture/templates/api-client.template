@@ -1,0 +1,50 @@
+// ==============================================================================
+// TEMPLATE: API Client Service
+// Responsibilities:
+//   - Network transport & HTTP status handling
+//   - Auth token attachment via interceptors
+//   - Parsing raw JSON into wire DTOs
+//   - Zero UI, ViewModel, or Navigation logic
+// ==============================================================================
+
+// Sample with Dio or Http client
+class FeatureApiClient {
+  final dynamic _httpClient; // e.g. Dio instance with auth interceptors configured
+  final String _baseUrl;
+
+  FeatureApiClient({
+    required dynamic httpClient,
+    String baseUrl = '/api/v1',
+  })  : _httpClient = httpClient,
+        _baseUrl = baseUrl;
+
+  /// Corresponds to an action in api-mapping.yaml (e.g. features.list)
+  Future<List<dynamic>> fetchFeatures({Map<String, dynamic>? params}) async {
+    try {
+      final response = await _httpClient.get(
+        '$_baseUrl/features',
+        queryParameters: params,
+      );
+
+      final List<dynamic> data = response.data['items'] ?? [];
+      return data;
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Corresponds to an action in api-mapping.yaml (e.g. features.get)
+  Future<dynamic> fetchFeatureById({required String id}) async {
+    try {
+      final response = await _httpClient.get('$_baseUrl/features/$id');
+      return response.data;
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  Exception _handleNetworkError(dynamic error) {
+    // Translate HTTP client errors into domain/app exceptions
+    return Exception('Network request failed: $error');
+  }
+}

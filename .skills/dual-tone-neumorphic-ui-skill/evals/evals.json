@@ -1,0 +1,23 @@
+{
+  "skill_name": "dual-tone-neumorphic-ui",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Design a responsive admin dashboard for a smart-device platform using the application's established visual identity. Keep the interface mostly white/off-white, use soft neumorphic cards and controls, use orange for primary user actions and teal for live/connected states, and use the specified palette. Include navigation, KPI cards, a device-status panel, a line chart, filters, and a primary action.",
+      "expected_output": "A cohesive dashboard that clearly follows the dual-tone neumorphic design system, with neutral tactile surfaces, orange intent actions, teal system states, restrained supporting blue/cyan, and approximately 90/5/3/2 visual balance.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Turn this settings page into the same premium UI theme: profile card, notification toggles, privacy controls, save button, connection status, slider, and destructive action. Keep the information architecture but restyle it using the reference neumorphism and dual-tone semantics.",
+      "expected_output": "A settings screen retaining the original structure while applying soft raised/inset surfaces, orange for the save/action intent, teal for enabled/connected state, neutral disabled controls, and accessible state communication.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Create a mobile media-control screen in the same visual system with a central circular control, play/pause/skip controls, three vertical sliders, favorite/cloud shortcuts, and volume/channel buttons. Use the provided orange and teal palette instead of the original red accent.",
+      "expected_output": "A polished mobile control interface that preserves the sample's tactile depth and spacing while using orange and teal in a balanced semantic split rather than saturating the entire UI.",
+      "files": []
+    }
+  ]
+}

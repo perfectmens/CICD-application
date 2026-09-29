@@ -1,0 +1,93 @@
+// ==============================================================================
+// TEMPLATE: MVVM ViewModel
+// Framework: Generic / Flutter (ChangeNotifier or StateNotifier pattern)
+// ==============================================================================
+
+import 'package:flutter/foundation.dart';
+// Import Domain Entity and Repository Interface:
+// import '../models/feature_entity.dart';
+// import '../repositories/feature_repository.dart';
+
+enum ViewStatus { initial, loading, success, empty, error, refreshing }
+
+class FeatureState<T> {
+  final ViewStatus status;
+  final T? data;
+  final String? errorMessage;
+  final Map<String, dynamic> filters;
+
+  const FeatureState({
+    this.status = ViewStatus.initial,
+    this.data,
+    this.errorMessage,
+    this.filters = const {},
+  });
+
+  bool get isLoading => status == ViewStatus.loading;
+  bool get isRefreshing => status == ViewStatus.refreshing;
+  bool get isSuccess => status == ViewStatus.success;
+  bool get isEmpty => status == ViewStatus.empty;
+  bool get hasError => status == ViewStatus.error;
+
+  FeatureState<T> copyWith({
+    ViewStatus? status,
+    T? data,
+    String? errorMessage,
+    Map<String, dynamic>? filters,
+  }) {
+    return FeatureState<T>(
+      status: status ?? this.status,
+      data: data ?? this.data,
+      errorMessage: errorMessage ?? this.errorMessage,
+      filters: filters ?? this.filters,
+    );
+  }
+}
+
+class FeatureViewModel<T> extends ChangeNotifier {
+  final dynamic _repository; // Replace with concrete FeatureRepository interface
+
+  FeatureState<T> _state = const FeatureState();
+  FeatureState<T> get state => _state;
+
+  FeatureViewModel({required dynamic repository}) : _repository = repository;
+
+  /// Initial load or filter application
+  Future<void> loadData({bool isRefresh = false}) async {
+    if (isRefresh && _state.data != null) {
+      _state = _state.copyWith(status: ViewStatus.refreshing);
+    } else {
+      _state = _state.copyWith(status: ViewStatus.loading, errorMessage: null);
+    }
+    notifyListeners();
+
+    try {
+      final result = await _repository.fetchData(filters: _state.filters);
+      
+      // Check if data is empty (e.g. empty list)
+      if (result is List && result.isEmpty) {
+        _state = _state.copyWith(status: ViewStatus.empty, data: result);
+      } else {
+        _state = _state.copyWith(status: ViewStatus.success, data: result);
+      }
+    } catch (e) {
+      _state = _state.copyWith(
+        status: ViewStatus.error,
+        errorMessage: e.toString(),
+      );
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  /// Update screen filter and reload data
+  void updateFilter(String key, dynamic value) {
+    final updatedFilters = Map<String, dynamic>.from(_state.filters);
+    updatedFilters[key] = value;
+    _state = _state.copyWith(filters: updatedFilters);
+    loadData();
+  }
+
+  /// Pull-to-refresh handler
+  Future<void> refresh() => loadData(isRefresh: true);
+}

@@ -136,7 +136,7 @@ class HealthResponse(BaseModel):
     service: str = Field("remote-update-server", description="Service identifier")
     timestamp: str = Field(..., description="ISO 8601 UTC timestamp")
     version: str = Field("1.0.0", description="Backend service implementation version")
-    lan_ip: str = Field("192.168.68.64", description="Host LAN IP address")
+    lan_ip: str = Field("192.168.68.78", description="Host LAN IP address")
 
 
 class UpdateCheckResponse(BaseModel):
@@ -229,7 +229,7 @@ def get_health():
         service="remote-update-server",
         timestamp=datetime.now(timezone.utc).isoformat(),
         version="1.0.0",
-        lan_ip="192.168.68.64"
+        lan_ip="192.168.68.78"
     )
 
 

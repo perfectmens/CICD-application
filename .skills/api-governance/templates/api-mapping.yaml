@@ -1,0 +1,391 @@
+# ==============================================================================
+# API MAPPING REGISTRY (api-mapping.yaml)
+# Single Source of Truth for Application API Contracts and Client Mappings
+# ==============================================================================
+
+version: "1.0"
+
+api:
+  base_url: "/api"
+  version: "v1"
+  title: "Application API Governance Registry"
+  description: >
+    Central registry defining all API endpoints, frontend actions,
+    analytical dashboard data sources, KPIs, parameters, and client consumers.
+
+domains:
+  # ----------------------------------------------------------------------------
+  # SALES DOMAIN
+  # ----------------------------------------------------------------------------
+  sales:
+    description: "Sales transactions, KPI monitoring, dashboards, and order operations"
+    dashboards:
+      sales_dashboard:
+        description: "Primary sales executive overview and mobile dashboard"
+        actions:
+          load_dashboard:
+            id: sales.dashboard.load
+            type: dashboard
+            purpose: "Fetches aggregated overview metrics and layout configuration for the sales screen"
+            api:
+              method: GET
+              path: /api/v1/dashboard/sales
+              auth:
+                required: true
+                roles:
+                  - admin
+                  - manager
+                  - analyst
+            parameters:
+              - name: from
+                type: date
+                in: query
+                required: true
+                description: "Start of date range (YYYY-MM-DD)"
+              - name: to
+                type: date
+                in: query
+                required: true
+                description: "End of date range (YYYY-MM-DD)"
+              - name: region
+                type: string
+                in: query
+                required: false
+                description: "Filter by sales region code (e.g. NA, EMEA, APAC)"
+            response:
+              type: SalesDashboardResponse
+              status_code: 200
+            consumers:
+              - mobile.sales_dashboard
+              - web.admin.sales_dashboard
+            backend:
+              controller: SalesDashboardController
+              handler: getDashboardOverview
+            status: active
+
+          revenue_kpi:
+            id: sales.kpi.revenue
+            type: kpi
+            purpose: "Authoritative revenue KPI metric calculated exclusively on backend"
+            api:
+              method: GET
+              path: /api/v1/dashboard/sales/kpis/revenue
+              auth:
+                required: true
+                roles:
+                  - admin
+                  - manager
+                  - analyst
+            parameters:
+              - name: period
+                type: string
+                in: query
+                required: false
+                default: "mtd"
+                description: "Calculation window: today, wtd, mtd, ytd"
+            kpi:
+              name: revenue_growth
+              calculation_owner: backend
+              unit: percentage
+              formula: "((current_period_rev - previous_period_rev) / previous_period_rev) * 100"
+            response:
+              type: RevenueKpiResponse
+              status_code: 200
+            consumers:
+              - mobile.sales_dashboard.revenue_card
+              - web.admin.sales_kpi_widget
+            backend:
+              controller: SalesKpiController
+              handler: getRevenueKpi
+            status: active
+
+          revenue_trend:
+            id: sales.chart.revenue_trend
+            type: chart
+            purpose: "Time-series dataset formatted for rendering historical revenue trends"
+            api:
+              method: GET
+              path: /api/v1/dashboard/sales/revenue-trend
+              auth:
+                required: true
+                roles:
+                  - admin
+                  - manager
+                  - analyst
+            parameters:
+              - name: interval
+                type: string
+                in: query
+                required: false
+                default: "day"
+                description: "Aggregation bucket: hour, day, week, month"
+            visualization:
+              type: line
+              x: date
+              y: revenue
+              group_by: category
+            response:
+              type: RevenueTrendResponse
+              status_code: 200
+            consumers:
+              - mobile.sales_dashboard.revenue_chart
+              - web.admin.revenue_chart
+            backend:
+              controller: SalesAnalyticsController
+              handler: getRevenueTrend
+            status: active
+
+          sales_drilldown:
+            id: sales.drilldown.revenue
+            type: drilldown
+            purpose: "Detailed order breakdown for a specific date or segment slice from the revenue chart"
+            api:
+              method: GET
+              path: /api/v1/dashboard/sales/revenue/drilldown
+              auth:
+                required: true
+                roles:
+                  - admin
+                  - manager
+            parameters:
+              - name: date
+                type: date
+                in: query
+                required: true
+                description: "Selected chart date to drill into (YYYY-MM-DD)"
+              - name: page
+                type: integer
+                in: query
+                required: false
+                default: 1
+              - name: limit
+                type: integer
+                in: query
+                required: false
+                default: 20
+            response:
+              type: SalesDrilldownResponse
+              status_code: 200
+            consumers:
+              - mobile.sales_dashboard.drilldown_sheet
+              - web.admin.drilldown_drawer
+            backend:
+              controller: SalesDrilldownController
+              handler: getRevenueDrilldown
+            status: active
+
+    actions:
+      list_orders:
+        id: sales.orders.list
+        type: table
+        purpose: "Paginated list of sales orders with filtering and sorting"
+        api:
+          method: GET
+          path: /api/v1/orders
+          auth:
+            required: true
+            roles:
+              - admin
+              - manager
+              - sales_rep
+        parameters:
+          - name: page
+            type: integer
+            in: query
+            required: false
+            default: 1
+          - name: status
+            type: string
+            in: query
+            required: false
+            description: "Filter by status: pending, completed, cancelled"
+        response:
+          type: OrderListResponse
+          status_code: 200
+        consumers:
+          - mobile.orders_screen
+          - web.admin.orders_table
+        backend:
+          controller: OrdersController
+          handler: listOrders
+        status: active
+
+      create_order:
+        id: sales.orders.create
+        type: action
+        purpose: "Submit a new customer order"
+        api:
+          method: POST
+          path: /api/v1/orders
+          auth:
+            required: true
+            roles:
+              - admin
+              - sales_rep
+        request:
+          type: CreateOrderRequest
+          content_type: application/json
+        response:
+          type: OrderResponse
+          status_code: 201
+        consumers:
+          - mobile.checkout_flow
+          - web.sales_rep_portal
+        backend:
+          controller: OrdersController
+          handler: createOrder
+        status: active
+
+      get_order:
+        id: sales.orders.get
+        type: action
+        purpose: "Fetch detail for an individual order by ID"
+        api:
+          method: GET
+          path: /api/v1/orders/{id}
+          auth:
+            required: true
+        parameters:
+          - name: id
+            type: string
+            in: path
+            required: true
+            description: "Unique order UUID"
+        response:
+          type: OrderDetailResponse
+          status_code: 200
+        consumers:
+          - mobile.order_detail_view
+          - web.admin.order_detail
+        backend:
+          controller: OrdersController
+          handler: getOrderById
+        status: active
+
+      update_order:
+        id: sales.orders.update
+        type: action
+        purpose: "Update mutable properties of an existing order"
+        api:
+          method: PUT
+          path: /api/v1/orders/{id}
+          auth:
+            required: true
+            roles:
+              - admin
+              - manager
+        parameters:
+          - name: id
+            type: string
+            in: path
+            required: true
+        request:
+          type: UpdateOrderRequest
+          content_type: application/json
+        response:
+          type: OrderResponse
+          status_code: 200
+        consumers:
+          - web.admin.edit_order_modal
+        backend:
+          controller: OrdersController
+          handler: updateOrder
+        status: active
+
+      delete_order:
+        id: sales.orders.delete
+        type: action
+        purpose: "Soft-delete or cancel an order by ID"
+        api:
+          method: DELETE
+          path: /api/v1/orders/{id}
+          auth:
+            required: true
+            roles:
+              - admin
+        parameters:
+          - name: id
+            type: string
+            in: path
+            required: true
+        response:
+          type: EmptySuccessResponse
+          status_code: 204
+        consumers:
+          - web.admin.order_detail
+        backend:
+          controller: OrdersController
+          handler: deleteOrder
+        status: active
+
+  # ----------------------------------------------------------------------------
+  # AUTH DOMAIN
+  # ----------------------------------------------------------------------------
+  auth:
+    description: "User authentication, token renewal, and session lifecycle"
+    actions:
+      login:
+        id: auth.session.login
+        type: action
+        purpose: "Authenticate user credentials and issue session JWTs"
+        api:
+          method: POST
+          path: /api/v1/auth/login
+          auth:
+            required: false
+        request:
+          type: LoginRequest
+          content_type: application/json
+        response:
+          type: AuthTokenResponse
+          status_code: 200
+        consumers:
+          - mobile.login_screen
+          - web.login_page
+        backend:
+          controller: AuthController
+          handler: login
+        status: active
+
+      logout:
+        id: auth.session.logout
+        type: action
+        purpose: "Invalidate the active refresh token and destroy session"
+        api:
+          method: POST
+          path: /api/v1/auth/logout
+          auth:
+            required: true
+        response:
+          type: EmptySuccessResponse
+          status_code: 200
+        consumers:
+          - mobile.user_profile.logout_button
+          - web.nav_bar.logout_button
+        backend:
+          controller: AuthController
+          handler: logout
+        status: active
+
+      refresh_token:
+        id: auth.session.refresh
+        type: action
+        purpose: "Obtain a fresh access token using a valid refresh token"
+        api:
+          method: POST
+          path: /api/v1/auth/refresh
+          auth:
+            required: false
+        request:
+          type: RefreshTokenRequest
+          content_type: application/json
+        response:
+          type: AuthTokenResponse
+          status_code: 200
+        consumers:
+          - mobile.http_interceptor
+          - web.http_interceptor
+        backend:
+          controller: AuthController
+          handler: refreshToken
+        status: active

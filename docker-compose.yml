@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: remote_update_backend
     ports:
-      - "8080:8080"
+      - "0.0.0.0:8080:8080"  # Bind to all interfaces — accessible from any LAN device
     restart: unless-stopped
     volumes:
       - ./backend/storage:/app/storage

@@ -1,0 +1,46 @@
+// ==============================================================================
+// TEMPLATE: MVVM Repository
+// Responsibilities:
+//   - Clean data boundary
+//   - Coordinate API Client & Local Cache
+//   - Map DTOs to Domain Entities
+// ==============================================================================
+
+// 1. ABSTRACT REPOSITORY INTERFACE
+abstract class FeatureRepository {
+  Future<FeatureEntity> getFeatureDetail({required String id});
+  Future<List<FeatureEntity>> listFeatures({Map<String, dynamic>? filters});
+}
+
+// 2. CONCRETE IMPLEMENTATION
+class FeatureRepositoryImpl implements FeatureRepository {
+  final dynamic _apiClient; // Concrete FeatureApiClient
+  final Map<String, FeatureEntity> _inMemoryCache = {};
+
+  FeatureRepositoryImpl({required dynamic apiClient}) : _apiClient = apiClient;
+
+  @override
+  Future<FeatureEntity> getFeatureDetail({required String id}) async {
+    // 1. Check Cache
+    if (_inMemoryCache.containsKey(id)) {
+      return _inMemoryCache[id]!;
+    }
+
+    // 2. Fetch Wire DTO from API Client
+    final dto = await _apiClient.fetchFeatureById(id: id);
+
+    // 3. Map DTO to Domain Entity
+    final entity = dto.toDomain();
+
+    // 4. Update Cache
+    _inMemoryCache[id] = entity;
+
+    return entity;
+  }
+
+  @override
+  Future<List<FeatureEntity>> listFeatures({Map<String, dynamic>? filters}) async {
+    final dtos = await _apiClient.fetchFeatures(params: filters);
+    return dtos.map<FeatureEntity>((dto) => dto.toDomain()).toList();
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "skill_name": "vertical-slice-development",
+  "evals": [
+    {
+      "id": "eval-1",
+      "prompt": "Add a new user feedback submission feature to the app. Inspect the existing API routes and state management first.",
+      "description": "Tests inspection of existing codebase, reuse of components, and end-to-end implementation across UI, state, and API."
+    },
+    {
+      "id": "eval-2",
+      "prompt": "Implement an item search filter for the inventory table. Make sure to handle loading, empty results, and network failure.",
+      "description": "Tests handling of all important states (success, loading, empty, error) and non-regression validation."
+    },
+    {
+      "id": "eval-3",
+      "prompt": "Fix the checkout discount calculation and verify behavior without refactoring the surrounding cart service.",
+      "description": "Tests minimal viable change, zero unrelated refactoring, and behavioral testing of edge cases."
+    }
+  ]
+}
