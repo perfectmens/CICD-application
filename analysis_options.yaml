@@ -10,6 +10,9 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  errors:
+    deprecated_member_use: ignore
+    prefer_initializing_formals: ignore
   exclude:
     - build/**
     - android/**

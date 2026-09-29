@@ -20,20 +20,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 GITHUB_REPO = "perfectmens/CICD-application"
-GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 
 # In-memory release state.
 # On startup, auto-synced from GitHub Releases via GitHub API (lifespan below).
 # DEFAULT_STATE is the cold-start fallback when GitHub is unreachable.
-# versionCode = git rev-list --count HEAD at the time the tag was pushed.
 DEFAULT_STATE = {
-    "latestVersionName": "0.0.5",
-    "latestVersionCode": 12,   # estimated fallback; startup sync overwrites with real value
+    "latestVersionName": "0.0.1",
+    "latestVersionCode": 14,
     "minSupportedCode": 1,
     "isMandatory": False,
-    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.5/app-release-v0.0.5.apk",
-    "sha256": "",
-    "releaseNotes": "v0.0.5 - Auto-sync from GitHub, shared string constants, stale copy fixed",
+    "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.1/app-release-v0.0.1.apk",
+    "sha256": "5ab13880e875f828decc237373320872cff8bba07b8986ffb90073ee0ed25841",
+    "releaseNotes": "Release v0.0.1 (Build 14) — Built with Flutter, Dual-Tone Neumorphic UI, and MVVM architecture.",
     "publishedAt": datetime.now(timezone.utc).isoformat(),
     "distributionSource": "github_releases"
 }
@@ -45,11 +44,10 @@ async def sync_from_github() -> bool:
     """
     Fetch the latest GitHub Release and populate current_release_state
     from the attached version.json asset. Called on every Docker container start.
-    No manual DEFAULT_STATE update needed after this is in place.
-    Returns True on success, False on any failure (fallback to DEFAULT_STATE).
+    Follows HTTP 302 redirects automatically to fetch GitHub release asset bytes.
     """
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             api_resp = await client.get(
                 GITHUB_API,
                 headers={
@@ -61,7 +59,14 @@ async def sync_from_github() -> bool:
                 print(f"[startup] GitHub API returned {api_resp.status_code}, using DEFAULT_STATE")
                 return False
 
-            release = api_resp.json()
+            raw_data = api_resp.json()
+            if isinstance(raw_data, list) and raw_data:
+                release = raw_data[0]
+            elif isinstance(raw_data, dict):
+                release = raw_data
+            else:
+                print("[startup] No releases found in GitHub response, using DEFAULT_STATE")
+                return False
 
             # Find version.json asset URL in the release assets list
             version_json_url = next(
@@ -80,12 +85,12 @@ async def sync_from_github() -> bool:
 
             vj = vj_resp.json()
             current_release_state.update({
-                "latestVersionName": vj["versionName"],
+                "latestVersionName": str(vj["versionName"]),
                 "latestVersionCode": int(vj["versionCode"]),
-                "downloadUrl": vj["downloadUrl"],
-                "sha256": vj.get("sha256", ""),
-                "releaseNotes": vj.get("releaseNotes", ""),
-                "publishedAt": vj.get("publishedAt", datetime.now(timezone.utc).isoformat()),
+                "downloadUrl": str(vj["downloadUrl"]),
+                "sha256": str(vj.get("sha256", "")),
+                "releaseNotes": str(vj.get("releaseNotes", "")),
+                "publishedAt": str(vj.get("publishedAt", datetime.now(timezone.utc).isoformat())),
                 "distributionSource": "github_releases_auto"
             })
             sha_preview = vj.get("sha256", "")[:12]

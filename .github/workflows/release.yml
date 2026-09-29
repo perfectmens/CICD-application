@@ -141,6 +141,7 @@ jobs:
         with:
           name: "Release v${{ steps.versioning.outputs.version_name }}"
           tag_name: "v${{ steps.versioning.outputs.version_name }}"
+          make_latest: true
           files: |
             ${{ steps.artifacts.outputs.apk_path }}
             version.json

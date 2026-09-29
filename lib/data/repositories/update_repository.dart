@@ -23,26 +23,25 @@ abstract class UpdateRepository {
 }
 
 class UpdateRepositoryImpl implements UpdateRepository {
-  final ApiClient _apiClient;
+  final ApiClient apiClient;
   final ApkDownloader _downloader;
 
   UpdateRepositoryImpl({
-    required ApiClient apiClient,
+    required this.apiClient,
     ApkDownloader? downloader,
-  })  : _apiClient = apiClient,
-        _downloader = downloader ?? ApkDownloader();
+  })  : _downloader = downloader ?? ApkDownloader();
 
   @override
-  String get serverUrl => _apiClient.baseUrl;
+  String get serverUrl => apiClient.baseUrl;
 
   @override
   void updateServerUrl(String newUrl) {
-    _apiClient.updateBaseUrl(newUrl);
+    apiClient.updateBaseUrl(newUrl);
   }
 
   @override
   Future<ServerHealth> checkHealth() async {
-    final dto = await _apiClient.getHealth();
+    final dto = await apiClient.getHealth();
     return dto.toDomain();
   }
 
@@ -51,7 +50,7 @@ class UpdateRepositoryImpl implements UpdateRepository {
     required String currentVersion,
     required int versionCode,
   }) async {
-    final dto = await _apiClient.checkVersion(
+    final dto = await apiClient.checkVersion(
       currentVersion: currentVersion,
       versionCode: versionCode,
     );
@@ -60,7 +59,7 @@ class UpdateRepositoryImpl implements UpdateRepository {
 
   @override
   Future<List<Greeting>> fetchGreetings({int count = 10}) async {
-    final dto = await _apiClient.getGreetings(count: count);
+    final dto = await apiClient.getGreetings(count: count);
     return dto.toDomain();
   }
 

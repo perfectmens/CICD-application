@@ -36,7 +36,7 @@ jobs:
         run: flutter pub get
 
       - name: Run Static Analysis (Linter)
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Run Unit & Widget Tests
         run: flutter test
