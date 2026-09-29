@@ -127,7 +127,7 @@ class MainViewModel(
                                 UpdateStatus.UpdateAvailable(updateInfo)
                             } else {
                                 UpdateStatus.UpToDate(
-                                    message = "Great — you are on the latest version! Check back after the next GitHub Actions build.",
+                                    message = "Remote update functionality will be added later.",
                                     latestVersionName = updateInfo.latestVersionName,
                                     latestVersionCode = updateInfo.latestVersionCode
                                 )
@@ -143,7 +143,7 @@ class MainViewModel(
                                 reason = error.localizedMessage ?: "Network unreachable"
                             ),
                             updateStatus = UpdateStatus.Error(
-                                message = "Cannot check for updates — backend server is offline or unreachable.",
+                                message = "Remote update functionality will be added later. (Backend server offline)",
                                 technicalDetail = error.localizedMessage
                             )
                         )
