@@ -176,3 +176,36 @@ domains:
           status_code: 200
         consumers:
           - mobile.remote_update.downloader
+
+  # ----------------------------------------------------------------------------
+  # MESSAGING & GREETINGS DOMAIN
+  # ----------------------------------------------------------------------------
+  messaging:
+    description: "Broadcasts and greetings from the Docker backend service"
+    endpoints:
+      random_greetings:
+        id: messages.greetings.random
+        type: informational
+        purpose: "Returns 10 randomized greetings and broadcast messages for UI showcase"
+        api:
+          method: GET
+          path: /api/v1/messages/random
+          auth:
+            required: false
+        parameters:
+          - name: count
+            type: integer
+            in: query
+            required: false
+            default: 10
+            description: "Number of random greetings to retrieve (defaults to 10)"
+        response:
+          type: GreetingsResponse
+          status_code: 200
+          schema:
+            greetings: "array"
+            count: "integer"
+            timestamp: "string"
+        consumers:
+          - mobile.greetings.showcase
+

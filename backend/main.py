@@ -11,7 +11,8 @@ and generated automatically via GitHub Actions CI/CD.
 
 from datetime import datetime, timezone
 import os
-from typing import Optional
+import random
+from typing import Optional, List
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -100,6 +101,43 @@ class GitHubReleasePayload(BaseModel):
     isMandatory: Optional[bool] = False
 
 
+class GreetingItem(BaseModel):
+    id: int
+    text: str
+    category: str
+    emoji: str
+
+
+class GreetingsResponse(BaseModel):
+    greetings: List[GreetingItem]
+    count: int
+    timestamp: str
+
+
+GREETINGS_POOL = [
+    GreetingItem(id=1, text="Hello and welcome to Remote Update Demo v0.0.2!", category="Welcome", emoji="👋"),
+    GreetingItem(id=2, text="Your Docker backend on LAN is delivering live broadcasts.", category="System", emoji="🐳"),
+    GreetingItem(id=3, text="Continuous Delivery makes mobile releases fast and painless.", category="DevOps", emoji="🚀"),
+    GreetingItem(id=4, text="Security first: APKs are signed with production keystore certs.", category="Security", emoji="🔒"),
+    GreetingItem(id=5, text="Have an incredible, productive day building amazing software!", category="Motivation", emoji="☀️"),
+    GreetingItem(id=6, text="Jetpack Compose Material 3 brings adaptive native beauty.", category="UI", emoji="🎨"),
+    GreetingItem(id=7, text="Over-the-air updates let your users stay on the latest build instantly.", category="Feature", emoji="📲"),
+    GreetingItem(id=8, text="Architecture matters: Unidirectional MVVM keeps code clean.", category="Architecture", emoji="🏛️"),
+    GreetingItem(id=9, text="Code verified with Android Lint & JUnit tests on every commit.", category="Testing", emoji="✅"),
+    GreetingItem(id=10, text="GitHub Actions handles the heavy lifting of signing and releases.", category="CI/CD", emoji="⚙️"),
+    GreetingItem(id=11, text="Greetings from your local Docker microservice container!", category="Docker", emoji="📦"),
+    GreetingItem(id=12, text="Zero downtime version deployments are the future of mobile engineering.", category="DevOps", emoji="⚡"),
+    GreetingItem(id=13, text="Clear architecture boundaries mean zero regression bugs.", category="Architecture", emoji="🛡️"),
+    GreetingItem(id=14, text="Every package upgrade is cryptographically verified with SHA-256.", category="Security", emoji="🔑"),
+    GreetingItem(id=15, text="You've mastered full-stack Android CI/CD pipelines!", category="Celebration", emoji="🎉"),
+    GreetingItem(id=16, text="Seamless LAN communication paired with global GitHub CDN delivery.", category="Networking", emoji="🌐"),
+    GreetingItem(id=17, text="Kotlin Coroutines & Flow make asynchronous networking smooth.", category="Kotlin", emoji="🌊"),
+    GreetingItem(id=18, text="PackageInstaller API handles in-place Android app replacement seamlessly.", category="Android", emoji="🤖"),
+    GreetingItem(id=19, text="Live version control keeps all distributed clients synchronized.", category="Governance", emoji="📊"),
+    GreetingItem(id=20, text="Keep innovating and building extraordinary Android experiences!", category="Inspiration", emoji="✨")
+]
+
+
 # -----------------------------------------------------------------------------
 # Endpoints (mapped to api-mapping.yaml)
 # -----------------------------------------------------------------------------
@@ -115,6 +153,23 @@ def get_health():
         timestamp=datetime.now(timezone.utc).isoformat(),
         version="1.0.0",
         lan_ip="192.168.68.64"
+    )
+
+
+@app.get("/api/v1/messages/random", response_model=GreetingsResponse, tags=["Messaging"])
+def get_random_greetings(
+    count: int = Query(10, ge=1, le=20, description="Number of random greetings to retrieve")
+):
+    """
+    Contract ID: messages.greetings.random
+    Returns randomized greetings from the Docker backend service.
+    """
+    sample_size = min(count, len(GREETINGS_POOL))
+    selected = random.sample(GREETINGS_POOL, sample_size)
+    return GreetingsResponse(
+        greetings=selected,
+        count=len(selected),
+        timestamp=datetime.now(timezone.utc).isoformat()
     )
 
 

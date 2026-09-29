@@ -13,9 +13,9 @@ android {
         minSdk = 26
         targetSdk = 35
         // Monotonically incremented integer version code
-        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 2
         // Semantic version name
-        versionName = project.findProperty("versionName")?.toString() ?: "0.0.1"
+        versionName = project.findProperty("versionName")?.toString() ?: "0.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

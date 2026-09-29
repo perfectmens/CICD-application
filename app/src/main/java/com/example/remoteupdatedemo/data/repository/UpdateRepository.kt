@@ -32,6 +32,11 @@ interface UpdateRepository {
     ): Result<java.io.File>
 
     /**
+     * Retrieves random broadcast greetings from the backend.
+     */
+    suspend fun getRandomGreetings(count: Int = 10): Result<List<com.example.remoteupdatedemo.data.model.Greeting>>
+
+    /**
      * Updates the target backend API base URL.
      */
     fun updateBaseUrl(newUrl: String)
@@ -41,3 +46,4 @@ interface UpdateRepository {
      */
     fun getBaseUrl(): String
 }
+

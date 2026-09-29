@@ -1,5 +1,6 @@
 package com.example.remoteupdatedemo.data.api
 
+import com.example.remoteupdatedemo.data.api.dto.GreetingsResponseDto
 import com.example.remoteupdatedemo.data.api.dto.HealthResponseDto
 import com.example.remoteupdatedemo.data.api.dto.UpdateCheckResponseDto
 import retrofit2.http.GET
@@ -26,4 +27,13 @@ interface UpdateApiService {
      */
     @GET("api/v1/health")
     suspend fun checkHealth(): HealthResponseDto
+
+    /**
+     * Contract ID: messages.greetings.random
+     * GET /api/v1/messages/random?count={count}
+     */
+    @GET("api/v1/messages/random")
+    suspend fun getRandomGreetings(
+        @Query("count") count: Int = 10
+    ): GreetingsResponseDto
 }

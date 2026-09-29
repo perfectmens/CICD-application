@@ -36,6 +36,36 @@ class MainViewModel(
 
     init {
         checkBackendHealth()
+        fetchGreetings()
+    }
+
+    /**
+     * Fetches 10 random broadcast greetings from the backend.
+     */
+    fun fetchGreetings() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingGreetings = true, greetingsError = null) }
+            val result = repository.getRandomGreetings(count = 10)
+            result.fold(
+                onSuccess = { greetingsList ->
+                    _uiState.update {
+                        it.copy(
+                            greetings = greetingsList,
+                            isLoadingGreetings = false,
+                            greetingsError = null
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoadingGreetings = false,
+                            greetingsError = error.localizedMessage ?: "Failed to fetch greetings"
+                        )
+                    }
+                }
+            )
+        }
     }
 
     /**

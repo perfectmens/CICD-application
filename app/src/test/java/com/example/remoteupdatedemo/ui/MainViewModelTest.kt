@@ -1,5 +1,6 @@
 package com.example.remoteupdatedemo.ui
 
+import com.example.remoteupdatedemo.data.model.Greeting
 import com.example.remoteupdatedemo.data.model.ServerHealth
 import com.example.remoteupdatedemo.data.model.UpdateInfo
 import com.example.remoteupdatedemo.data.repository.UpdateRepository
@@ -42,6 +43,12 @@ class MainViewModelTest {
                 timestamp = "2026-09-29T10:00:00Z"
             )
         ),
+        var greetingsResult: Result<List<Greeting>> = Result.success(
+            listOf(
+                Greeting(1, "Hello from Docker", "Welcome", "👋"),
+                Greeting(2, "Test greeting", "Testing", "🧪")
+            )
+        ),
         private var currentUrl: String = "http://10.0.2.2:8080/"
     ) : UpdateRepository {
         override suspend fun checkForUpdate(currentVersionCode: Int, currentVersionName: String): Result<UpdateInfo> {
@@ -49,6 +56,9 @@ class MainViewModelTest {
         }
         override suspend fun checkServerHealth(): Result<ServerHealth> {
             return healthResult
+        }
+        override suspend fun getRandomGreetings(count: Int): Result<List<Greeting>> {
+            return greetingsResult
         }
         override fun updateBaseUrl(newUrl: String) {
             currentUrl = newUrl
@@ -166,4 +176,39 @@ class MainViewModelTest {
         val error = state.updateStatus as UpdateStatus.Error
         assertTrue(error.message.contains("Remote update functionality will be added later"))
     }
+
+    @Test
+    fun fetchGreetings_onSuccess_populatesGreetingsList() = runTest {
+        val repo = FakeRepository(
+            greetingsResult = Result.success(
+                listOf(
+                    Greeting(1, "Broadcast 1", "System", "🐳"),
+                    Greeting(2, "Broadcast 2", "DevOps", "🚀")
+                )
+            )
+        )
+        val viewModel = MainViewModel(repo, "0.0.1", 1)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(2, state.greetings.size)
+        assertEquals("Broadcast 1", state.greetings[0].text)
+        assertEquals(false, state.isLoadingGreetings)
+        assertEquals(null, state.greetingsError)
+    }
+
+    @Test
+    fun fetchGreetings_onFailure_setsGreetingsError() = runTest {
+        val repo = FakeRepository(
+            greetingsResult = Result.failure(RuntimeException("Docker backend timeout"))
+        )
+        val viewModel = MainViewModel(repo, "0.0.1", 1)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.greetings.isEmpty())
+        assertEquals(false, state.isLoadingGreetings)
+        assertEquals("Docker backend timeout", state.greetingsError)
+    }
 }
+

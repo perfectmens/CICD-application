@@ -114,6 +114,21 @@ class TestRemoteUpdateBackend(unittest.TestCase):
             content = resp.read()
             self.assertTrue(len(content) > 0)
 
+    def test_random_greetings_endpoint(self):
+        url = f"{BASE_URL}/api/v1/messages/random?count=10"
+        with urllib.request.urlopen(url) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode())
+            self.assertEqual(data["count"], 10)
+            self.assertEqual(len(data["greetings"]), 10)
+            self.assertIn("timestamp", data)
+            first = data["greetings"][0]
+            self.assertIn("id", first)
+            self.assertIn("text", first)
+            self.assertIn("category", first)
+            self.assertIn("emoji", first)
+
 
 if __name__ == "__main__":
     unittest.main()
+

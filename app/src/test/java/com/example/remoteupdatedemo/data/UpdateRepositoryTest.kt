@@ -40,6 +40,17 @@ class UpdateRepositoryTest {
                 version = "1.0.0"
             )
         }
+
+        override suspend fun getRandomGreetings(count: Int): com.example.remoteupdatedemo.data.api.dto.GreetingsResponseDto {
+            if (shouldThrow) throw RuntimeException("Failed to fetch greetings")
+            return com.example.remoteupdatedemo.data.api.dto.GreetingsResponseDto(
+                greetings = listOf(
+                    com.example.remoteupdatedemo.data.api.dto.GreetingItemDto(1, "Test Message", "Test", "👋")
+                ),
+                count = 1,
+                timestamp = "2026-09-29T10:00:00Z"
+            )
+        }
     }
 
     @Test
@@ -98,4 +109,22 @@ class UpdateRepositoryTest {
         assertTrue(health.isHealthy)
         assertEquals("remote-update-server", health.service)
     }
+
+    @Test
+    fun getRandomGreetings_success_mapsToDomain() = runTest {
+        val fakeService = FakeApiService()
+        val repository = UpdateRepositoryImpl(apiServiceProvider = { fakeService })
+
+        val result = repository.getRandomGreetings(10)
+
+        assertTrue(result.isSuccess)
+        val greetings = result.getOrThrow()
+        assertEquals(1, greetings.size)
+        assertEquals("Test Message", greetings[0].text)
+        assertEquals("👋", greetings[0].emoji)
+    }
 }
+
+
+
+

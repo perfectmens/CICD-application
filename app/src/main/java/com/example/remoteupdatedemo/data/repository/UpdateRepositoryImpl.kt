@@ -50,6 +50,13 @@ class UpdateRepositoryImpl(
         )
     }
 
+    override suspend fun getRandomGreetings(count: Int): Result<List<com.example.remoteupdatedemo.data.model.Greeting>> {
+        return runCatching {
+            val responseDto = apiServiceProvider().getRandomGreetings(count = count)
+            responseDto.greetings.map { it.toDomain() }
+        }
+    }
+
     override fun updateBaseUrl(newUrl: String) {
         ApiClient.setBaseUrl(newUrl)
     }
@@ -79,3 +86,12 @@ internal fun HealthResponseDto.toDomain(): ServerHealth = ServerHealth(
     version = version,
     timestamp = timestamp
 )
+
+internal fun com.example.remoteupdatedemo.data.api.dto.GreetingItemDto.toDomain(): com.example.remoteupdatedemo.data.model.Greeting =
+    com.example.remoteupdatedemo.data.model.Greeting(
+        id = id,
+        text = text,
+        category = category,
+        emoji = emoji
+    )
+

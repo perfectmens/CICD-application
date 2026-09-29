@@ -1,5 +1,6 @@
 package com.example.remoteupdatedemo.ui
 
+import com.example.remoteupdatedemo.data.model.Greeting
 import com.example.remoteupdatedemo.data.model.UpdateInfo
 
 /**
@@ -40,5 +41,8 @@ data class MainUiState(
     val backendUrl: String,
     val updateStatus: UpdateStatus = UpdateStatus.Idle,
     val backendHealth: BackendHealthState = BackendHealthState.Checking,
-    val isSettingsDialogOpen: Boolean = false
+    val isSettingsDialogOpen: Boolean = false,
+    val greetings: List<Greeting> = emptyList(),
+    val isLoadingGreetings: Boolean = false,
+    val greetingsError: String? = null
 )

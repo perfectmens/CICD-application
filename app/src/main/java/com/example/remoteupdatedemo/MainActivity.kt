@@ -9,10 +9,12 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.example.remoteupdatedemo.data.model.Greeting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,7 +103,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onOpenSettings = { viewModel.openSettingsDialog() },
                     onSaveBackendUrl = { viewModel.updateBackendUrl(it) },
-                    onDismissSettings = { viewModel.dismissSettingsDialog() }
+                    onDismissSettings = { viewModel.dismissSettingsDialog() },
+                    onRefreshGreetings = { viewModel.fetchGreetings() }
                 )
             }
         }
@@ -141,7 +144,8 @@ fun MainScreen(
     onInstallApk: (File) -> Unit,
     onOpenSettings: () -> Unit,
     onSaveBackendUrl: (String) -> Unit,
-    onDismissSettings: () -> Unit
+    onDismissSettings: () -> Unit,
+    onRefreshGreetings: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = Slate50
@@ -252,6 +256,14 @@ fun MainScreen(
                     onInstallApk = onInstallApk
                 )
             }
+
+            // Docker Backend Greetings Section
+            DockerGreetingsSection(
+                greetings = uiState.greetings,
+                isLoading = uiState.isLoadingGreetings,
+                errorMessage = uiState.greetingsError,
+                onRefresh = onRefreshGreetings
+            )
         }
     }
 
@@ -638,3 +650,190 @@ fun BackendSettingsDialog(
         }
     )
 }
+
+@Composable
+fun DockerGreetingsSection(
+    greetings: List<Greeting>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRefresh: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Docker Broadcasts",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate900
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = ElectricTeal.copy(alpha = 0.1f)
+                        ) {
+                            Text(
+                                text = "10 Live",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ElectricTeal,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Random greetings fetched from Docker backend over LAN",
+                        fontSize = 12.sp,
+                        color = Slate500,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Button(
+                    onClick = onRefresh,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Slate100,
+                        contentColor = Slate800
+                    ),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Slate800
+                        )
+                    } else {
+                        Text(text = "Refresh", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            if (isLoading && greetings.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = ElectricTeal
+                    )
+                }
+            } else if (errorMessage != null && greetings.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = RoseRed.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, RoseRed.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Failed to load greetings",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RoseRed
+                        )
+                        Text(
+                            text = errorMessage,
+                            fontSize = 12.sp,
+                            color = Slate700
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    greetings.forEachIndexed { index, greeting ->
+                        GreetingItemRow(index = index + 1, greeting = greeting)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GreetingItemRow(
+    index: Int,
+    greeting: Greeting
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Slate50,
+        border = BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = CardBackground,
+                border = BorderStroke(1.dp, BorderSubtle),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = greeting.emoji, fontSize = 20.sp)
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = greeting.text,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Slate900,
+                    lineHeight = 18.sp
+                )
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Slate100
+                ) {
+                    Text(
+                        text = "#$index ${greeting.category}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate700,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
