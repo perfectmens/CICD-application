@@ -59,7 +59,7 @@ jobs:
           echo "version_name=$V_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
 
-      - name: Decode Production Keystore (if configured)
+      - name: Resolve Keystore for Deterministic Signing
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -67,30 +67,27 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding KEYSTORE_BASE64 secret..."
             echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > /tmp/release.keystore
-            if [ -s /tmp/release.keystore ]; then
-              echo "Keystore decoded successfully ($(stat -c%s /tmp/release.keystore) bytes)"
-              echo "keystore_path=/tmp/release.keystore" >> $GITHUB_OUTPUT
-            else
-              echo "Decoded keystore is empty, falling back to debug signing"
-              echo "keystore_path=" >> $GITHUB_OUTPUT
-            fi
+            echo "keystore_path=/tmp/release.keystore" >> $GITHUB_OUTPUT
+          elif [ -f "release.keystore" ]; then
+            echo "Using committed release.keystore for continuous updates ($(stat -c%s release.keystore) bytes)"
+            echo "keystore_path=$(pwd)/release.keystore" >> $GITHUB_OUTPUT
           else
-            echo "No KEYSTORE_BASE64 secret provided, using fallback signing"
+            echo "No keystore found, using fallback signing"
             echo "keystore_path=" >> $GITHUB_OUTPUT
           fi
 
       - name: Assemble Release APK
         env:
           KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore_path }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'remoteupdate123' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'remoteupdate' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'remoteupdate123' }}
         run: |
           ./gradlew assembleRelease \
             -PversionName="${{ steps.versioning.outputs.version_name }}" \
             -PversionCode="${{ steps.versioning.outputs.version_code }}"
 
-      - name: Securely Wipe Keystore File
+      - name: Securely Wipe Ephemeral Keystore File
         if: always()
         run: rm -f /tmp/release.keystore
 

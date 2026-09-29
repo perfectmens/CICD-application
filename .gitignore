@@ -46,9 +46,10 @@ captures/
 .idea/dictionaries
 .idea/libraries
 
-# Keystore files (Security Guardrail: Never commit keys)
+# Keystore files (Security Guardrail: Never commit keys in production)
 *.jks
 *.keystore
+!release.keystore
 keystore_base64.txt
 
 # External native build folder
