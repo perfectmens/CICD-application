@@ -1,12 +1,15 @@
 package com.example.remoteupdatedemo
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +34,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -48,10 +51,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import com.example.remoteupdatedemo.data.model.UpdateInfo
 import com.example.remoteupdatedemo.ui.BackendHealthState
 import com.example.remoteupdatedemo.ui.MainUiState
 import com.example.remoteupdatedemo.ui.MainViewModel
@@ -70,6 +76,7 @@ import com.example.remoteupdatedemo.ui.theme.Slate500
 import com.example.remoteupdatedemo.ui.theme.Slate700
 import com.example.remoteupdatedemo.ui.theme.Slate800
 import com.example.remoteupdatedemo.ui.theme.Slate900
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -85,11 +92,43 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     uiState = uiState,
                     onCheckForUpdate = { viewModel.checkForUpdate() },
+                    onStartDownload = { updateInfo ->
+                        val targetFile = File(cacheDir, "apk_updates/RemoteUpdateDemo-v${updateInfo.latestVersionName}.apk")
+                        viewModel.startUpdateDownload(targetFile, updateInfo)
+                    },
+                    onInstallApk = { apkFile ->
+                        triggerInstallApk(apkFile)
+                    },
                     onOpenSettings = { viewModel.openSettingsDialog() },
                     onSaveBackendUrl = { viewModel.updateBackendUrl(it) },
                     onDismissSettings = { viewModel.dismissSettingsDialog() }
                 )
             }
+        }
+    }
+
+    /**
+     * Hands off the downloaded APK to Android's PackageInstaller via FileProvider.
+     */
+    private fun triggerInstallApk(apkFile: File) {
+        if (!apkFile.exists()) {
+            Toast.makeText(this, "APK file not found on disk", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                apkFile
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to launch installer: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -98,6 +137,8 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     uiState: MainUiState,
     onCheckForUpdate: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
+    onInstallApk: (File) -> Unit,
     onOpenSettings: () -> Unit,
     onSaveBackendUrl: (String) -> Unit,
     onDismissSettings: () -> Unit
@@ -116,8 +157,8 @@ fun MainScreen(
         ) {
             // App Logo
             Spacer(modifier = Modifier.height(8.dp))
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = "App Logo",
                 modifier = Modifier
                     .size(80.dp)
@@ -163,7 +204,8 @@ fun MainScreen(
             // Update Action Button
             Button(
                 onClick = onCheckForUpdate,
-                enabled = uiState.updateStatus !is UpdateStatus.Loading,
+                enabled = uiState.updateStatus !is UpdateStatus.Loading &&
+                          uiState.updateStatus !is UpdateStatus.Downloading,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Slate900,
@@ -204,7 +246,11 @@ fun MainScreen(
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                UpdateStatusCard(status = uiState.updateStatus)
+                UpdateStatusCard(
+                    status = uiState.updateStatus,
+                    onStartDownload = onStartDownload,
+                    onInstallApk = onInstallApk
+                )
             }
         }
     }
@@ -314,7 +360,11 @@ fun BackendStatusPill(
 }
 
 @Composable
-fun UpdateStatusCard(status: UpdateStatus) {
+fun UpdateStatusCard(
+    status: UpdateStatus,
+    onStartDownload: (UpdateInfo) -> Unit,
+    onInstallApk: (File) -> Unit
+) {
     when (status) {
         is UpdateStatus.UpToDate -> {
             Card(
@@ -384,7 +434,7 @@ fun UpdateStatusCard(status: UpdateStatus) {
                         modifier = Modifier.padding(vertical = 4.dp)
                     ) {
                         Text(
-                            text = "Download via Internet: GitHub Releases",
+                            text = "Distribution: GitHub Releases (Internet)",
                             fontSize = 11.sp,
                             color = Slate700,
                             fontWeight = FontWeight.Medium,
@@ -393,18 +443,90 @@ fun UpdateStatusCard(status: UpdateStatus) {
                     }
                     Text(
                         text = status.updateInfo.downloadUrl,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = ElectricTeal,
                         textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onStartDownload(status.updateInfo) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Download Update (Internet)")
+                    }
+                }
+            }
+        }
+        is UpdateStatus.Downloading -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ElectricTeal.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = CardBackground),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Downloading v${status.updateInfo.latestVersionName} from GitHub...",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate900
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { status.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = ElectricTeal,
+                        trackColor = Slate100
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Remote APK download & installer will be connected in future stage.",
+                        text = "${(status.progress * 100).toInt()}% completed",
                         fontSize = 12.sp,
-                        color = Slate500,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center
+                        color = Slate500
                     )
+                }
+            }
+        }
+        is UpdateStatus.Downloaded -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, EmeraldGreen.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.08f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "APK Downloaded & Verified!",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmeraldDark
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "v${status.updateInfo.latestVersionName} is ready to be installed.",
+                        fontSize = 13.sp,
+                        color = Slate700
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onInstallApk(status.file) },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldDark),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Install Update Now")
+                    }
                 }
             }
         }

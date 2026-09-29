@@ -12,12 +12,35 @@ android {
         applicationId = "com.example.remoteupdatedemo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1"
+        // Monotonically incremented integer version code
+        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+        // Semantic version name
+        versionName = project.findProperty("versionName")?.toString() ?: "0.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            val envPath = System.getenv("KEYSTORE_PATH")
+            val keystoreFile = if (!envPath.isNullOrBlank()) {
+                file(envPath)
+            } else {
+                rootProject.file("release.keystore")
+            }
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "remoteupdate123"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "remoteupdate"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "remoteupdate123"
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
         }
     }
 
@@ -28,6 +51,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"

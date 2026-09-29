@@ -14,6 +14,9 @@ sealed interface UpdateStatus {
         val latestVersionCode: Int
     ) : UpdateStatus
     data class UpdateAvailable(val updateInfo: UpdateInfo) : UpdateStatus
+    data class Downloading(val progress: Float, val updateInfo: UpdateInfo) : UpdateStatus
+    data class Downloaded(val file: java.io.File, val updateInfo: UpdateInfo) : UpdateStatus
+    data class Installing(val file: java.io.File) : UpdateStatus
     data class Error(val message: String, val technicalDetail: String? = null) : UpdateStatus
 }
 

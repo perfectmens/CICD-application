@@ -54,6 +54,16 @@ class MainViewModelTest {
             currentUrl = newUrl
         }
         override fun getBaseUrl(): String = currentUrl
+
+        override suspend fun downloadUpdateApk(
+            downloadUrl: String,
+            destinationFile: java.io.File,
+            expectedSha256: String?,
+            onProgress: (Float) -> Unit
+        ): Result<java.io.File> {
+            onProgress(1.0f)
+            return Result.success(destinationFile)
+        }
     }
 
     @Before

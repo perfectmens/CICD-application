@@ -35,6 +35,21 @@ class UpdateRepositoryImpl(
         }
     }
 
+    override suspend fun downloadUpdateApk(
+        downloadUrl: String,
+        destinationFile: java.io.File,
+        expectedSha256: String?,
+        onProgress: (Float) -> Unit
+    ): Result<java.io.File> {
+        val downloader = com.example.remoteupdatedemo.data.api.ApkDownloader()
+        return downloader.downloadApk(
+            downloadUrl = downloadUrl,
+            destinationFile = destinationFile,
+            expectedSha256 = expectedSha256,
+            onProgress = onProgress
+        )
+    }
+
     override fun updateBaseUrl(newUrl: String) {
         ApiClient.setBaseUrl(newUrl)
     }

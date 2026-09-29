@@ -124,6 +124,42 @@ class MainViewModel(
     }
 
     /**
+     * Downloads the APK update from GitHub Releases or backend server.
+     */
+    fun startUpdateDownload(destinationFile: java.io.File, updateInfo: com.example.remoteupdatedemo.data.model.UpdateInfo) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(updateStatus = UpdateStatus.Downloading(0f, updateInfo)) }
+            val result = repository.downloadUpdateApk(
+                downloadUrl = updateInfo.downloadUrl,
+                destinationFile = destinationFile,
+                expectedSha256 = updateInfo.sha256,
+                onProgress = { progress ->
+                    _uiState.update {
+                        it.copy(updateStatus = UpdateStatus.Downloading(progress, updateInfo))
+                    }
+                }
+            )
+            result.fold(
+                onSuccess = { file ->
+                    _uiState.update {
+                        it.copy(updateStatus = UpdateStatus.Downloaded(file, updateInfo))
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            updateStatus = UpdateStatus.Error(
+                                message = "Failed to download update APK: ${error.localizedMessage}",
+                                technicalDetail = error.message
+                            )
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
      * Resets the update status back to Idle.
      */
     fun resetUpdateStatus() {

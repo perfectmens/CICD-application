@@ -22,6 +22,16 @@ interface UpdateRepository {
     suspend fun checkServerHealth(): Result<ServerHealth>
 
     /**
+     * Downloads the APK update from the provided URL (Internet GitHub Release or LAN).
+     */
+    suspend fun downloadUpdateApk(
+        downloadUrl: String,
+        destinationFile: java.io.File,
+        expectedSha256: String?,
+        onProgress: (Float) -> Unit
+    ): Result<java.io.File>
+
+    /**
      * Updates the target backend API base URL.
      */
     fun updateBaseUrl(newUrl: String)
