@@ -42,7 +42,7 @@ DEFAULT_STATE = {
     "isMandatory": False,
     # Primary distribution through GitHub Releases over the Internet:
     "downloadUrl": f"https://github.com/{GITHUB_REPO}/releases/download/v0.0.4/app-release-v0.0.4.apk",
-    "sha256": "",
+    "sha256": "ae4660f459adbe055d92433a4180684e077e67aed0c7b008742b162f5dffa850",
     "releaseNotes": "v0.0.4 — Full OTA update flow\n• In-app update detection via Docker backend\n• GitHub Actions notifies backend on every release\n• Download progress with SHA-256 verification\n• Seamless install via PackageInstaller API",
     "publishedAt": datetime.now(timezone.utc).isoformat(),
     "distributionSource": "github_releases"
