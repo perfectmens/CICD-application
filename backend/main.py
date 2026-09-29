@@ -37,7 +37,7 @@ GITHUB_REPO = "perfectmens/CICD-application"
 # In-memory release state (updated via GitHub Actions webhook or admin endpoint)
 DEFAULT_STATE = {
     "latestVersionName": "0.0.4",
-    "latestVersionCode": 4,
+    "latestVersionCode": 8,   # = git rev-list --count HEAD at v0.0.4 tag
     "minSupportedCode": 1,
     "isMandatory": False,
     # Primary distribution through GitHub Releases over the Internet:
@@ -280,7 +280,7 @@ def reset_to_default_version():
     """
     global current_release_state
     current_release_state = dict(DEFAULT_STATE)
-    return {"success": True, "message": "Reset to v0.0.1 (code 1)", "state": current_release_state}
+    return {"success": True, "message": "Reset to v0.0.4 (code 8)", "state": current_release_state}
 
 
 @app.get("/api/v1/updates/download/latest.apk", tags=["Updates"])
