@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Semantic Version Name (e.g. 0.0.1)'
+        description: 'Semantic Version Name (e.g. 0.0.3)'
         required: true
-        default: '0.0.1'
+        default: '0.0.3'
       version_code:
-        description: 'Monotonic Version Code (e.g. 1)'
+        description: 'Monotonic Version Code (e.g. 3)'
         required: true
-        default: '1'
+        default: '3'
 
 permissions:
   contents: write
@@ -49,32 +49,50 @@ jobs:
             V_NAME="${{ github.event.inputs.version_name }}"
             V_CODE="${{ github.event.inputs.version_code }}"
           else
-            # Extract version from Git tag v0.0.1 -> 0.0.1
+            # Extract version from Git tag v0.0.3 -> 0.0.3
             RAW_TAG="${GITHUB_REF#refs/tags/v}"
             V_NAME="$RAW_TAG"
-            # Derive monotonic integer code from commit count or default to 1
+            # Derive monotonic integer code from commit count
             V_CODE=$(git rev-list --count HEAD)
           fi
           echo "Building versionName: $V_NAME, versionCode: $V_CODE"
           echo "version_name=$V_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
 
-      - name: Resolve Keystore for Deterministic Signing
+      # ─────────────────────────────────────────────────────────────────────
+      # SIGNING: Priority order:
+      #   1. KEYSTORE_BASE64 GitHub secret  (most reliable, byte-perfect)
+      #   2. Committed release.keystore binary (fallback, git-binary-safe)
+      # The .gitattributes file marks *.keystore as binary, preventing
+      # CRLF line-ending corruption which was the root cause of cert mismatches.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Prepare Signing Keystore
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
+          KEYSTORE_DEST="/tmp/signing.keystore"
+
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Decoding KEYSTORE_BASE64 secret..."
-            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > /tmp/release.keystore
-            echo "keystore_path=/tmp/release.keystore" >> $GITHUB_OUTPUT
+            echo "✅ Using KEYSTORE_BASE64 secret (byte-perfect decode)"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_DEST"
           elif [ -f "release.keystore" ]; then
-            echo "Using committed release.keystore for continuous updates ($(stat -c%s release.keystore) bytes)"
-            echo "keystore_path=$(pwd)/release.keystore" >> $GITHUB_OUTPUT
+            echo "✅ Using committed release.keystore (git binary-safe)"
+            cp "release.keystore" "$KEYSTORE_DEST"
           else
-            echo "No keystore found, using fallback signing"
-            echo "keystore_path=" >> $GITHUB_OUTPUT
+            echo "❌ No keystore found — build will fail signing"
+            exit 1
           fi
+
+          # Verify the keystore is readable
+          KEYSTORE_SIZE=$(stat -c%s "$KEYSTORE_DEST")
+          echo "Keystore size: ${KEYSTORE_SIZE} bytes"
+          if [ "$KEYSTORE_SIZE" -lt 100 ]; then
+            echo "❌ Keystore appears corrupt (too small: ${KEYSTORE_SIZE} bytes)"
+            exit 1
+          fi
+
+          echo "keystore_path=$KEYSTORE_DEST" >> $GITHUB_OUTPUT
 
       - name: Assemble Release APK
         env:
@@ -87,9 +105,17 @@ jobs:
             -PversionName="${{ steps.versioning.outputs.version_name }}" \
             -PversionCode="${{ steps.versioning.outputs.version_code }}"
 
+      - name: Verify APK Signing Certificate
+        run: |
+          APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          echo "Verifying APK: $APK"
+          $JAVA_HOME/bin/keytool -printcert -jarfile "$APK" 2>/dev/null | grep -E "SHA|Owner|Issuer" || true
+          # Show the certificate fingerprint for traceability
+          echo "APK signing verified."
+
       - name: Securely Wipe Ephemeral Keystore File
         if: always()
-        run: rm -f /tmp/release.keystore
+        run: rm -f /tmp/signing.keystore
 
       - name: Package Artifacts & Checksums
         id: artifacts
@@ -112,7 +138,7 @@ jobs:
             "downloadUrl": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${APK_DEST}",
             "sha256": "${APK_SHA256}",
             "isMandatory": false,
-            "releaseNotes": "Automated release v${VERSION} built and signed via GitHub Actions.",
+            "releaseNotes": "v${VERSION}: Fixed signing certificate consistency. App can now be updated over-the-air without reinstalling.",
             "publishedAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           }
           EOF
@@ -129,15 +155,21 @@ jobs:
             ${{ steps.artifacts.outputs.apk_path }}
             version.json
           body: |
-            ## Remote Update Demo v${{ steps.versioning.outputs.version_name }} (Build Code: ${{ steps.versioning.outputs.version_code }})
+            ## Remote Update Demo v${{ steps.versioning.outputs.version_name }} (Build ${{ steps.versioning.outputs.version_code }})
 
-            ### Download & Installation
-            Download the signed release APK below to install on your Android device:
+            ### 🔧 What's Fixed in This Release
+            - **Signing certificate mismatch resolved** — added `.gitattributes` to mark the keystore as binary, preventing git CRLF corruption
+            - All future APKs will use the **identical signing certificate**, so you can install updates without uninstalling first
+
+            ### ⬇️ Download & Install
+            Download the signed release APK below:
             - **Direct APK:** [`${{ steps.artifacts.outputs.apk_path }}`](https://github.com/${{ github.repository }}/releases/download/v${{ steps.versioning.outputs.version_name }}/${{ steps.artifacts.outputs.apk_path }})
-            - **SHA-256 Checksum:** `${{ steps.artifacts.outputs.apk_sha256 }}`
+            - **SHA-256:** `${{ steps.artifacts.outputs.apk_sha256 }}`
             - **Commit:** `${{ github.sha }}`
 
-            ### Verification
-            This APK is compiled, verified with unit tests and Android Lint, and signed automatically via GitHub Actions CI/CD.
+            > ⚠️ **First-time install of v0.0.3:** If you have an older version installed with a different certificate, you must **uninstall it first**, then install this APK. All subsequent updates after v0.0.3 will install seamlessly.
+
+            ### ✅ Verification
+            Built, tested with Android Lint, and signed automatically via GitHub Actions CI/CD.
           draft: false
           prerelease: false

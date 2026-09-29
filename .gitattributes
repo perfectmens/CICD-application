@@ -1,0 +1,21 @@
+# Treat all .keystore and .jks files as binary so git never corrupts them with CRLF translation
+*.keystore binary
+*.jks      binary
+
+# Standard line-ending normalization for text files
+*.kt       text eol=lf
+*.kts      text eol=lf
+*.java     text eol=lf
+*.xml      text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.py       text eol=lf
+*.sh       text eol=lf
+*.gradle   text eol=lf
+*.properties text eol=lf
+*.pro      text eol=lf
+
+# Shell scripts must be LF only
+gradlew    text eol=lf

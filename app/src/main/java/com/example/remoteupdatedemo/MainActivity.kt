@@ -197,6 +197,22 @@ fun MainScreen(
                 onClick = onOpenSettings
             )
 
+            // v0.0.3 — signing-fix badge
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = EmeraldGreen.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.4f))
+            ) {
+                Text(
+                    text = "✅ v0.0.3 · Signing certificate fixed — seamless OTA updates enabled",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = EmeraldDark,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Current Version Card
