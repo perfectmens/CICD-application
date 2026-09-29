@@ -1,8 +1,0 @@
-<resources>
-    <string name="app_name">Remote Update Demo</string>
-    <string name="app_description">This application is a sample project used to learn Android CI/CD and remote APK updates.</string>
-    <string name="current_version_label">Current Version</string>
-    <string name="check_for_update_button">Check for Update</string>
-    <string name="checking_updates">Checking for updates...</string>
-    <string name="up_to_date_notice">Remote update functionality will be added later.</string>
-</resources>

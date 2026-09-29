@@ -1,12 +1,12 @@
 ---
 name: android-ci-cd
 family: software-delivery
-description: Comprehensive CI/CD automation, pipeline engineering, and release governance skill for Android applications. Use this skill whenever designing, building, troubleshooting, or optimizing Android Continuous Integration (Gradle builds, unit tests, Android Lint, static analysis, dependency scanning, build caching) and Continuous Delivery/Deployment (GitHub Actions workflows, keystore signing, GitHub Releases, Google Play publishing, Firebase App Distribution, direct APK delivery, in-app updates, Room database migrations, and rollback/fix-forward strategies).
+description: Comprehensive CI/CD automation, pipeline engineering, and release governance skill for Android applications. Use this skill whenever designing, building, troubleshooting, or optimizing Android Continuous Integration (Gradle builds, unit tests, Android Lint, static analysis, dependency scanning, build caching) and Continuous Delivery/Deployment (GitHub Actions workflows, keystore signing, GitHub Releases, Google Play publishing, Firebase App Distribution, direct APK delivery, in-app updates, Room database migrations, and rollback/fix-forward strategies). Supports both Public and Private GitHub repositories.
 ---
 
 # Android CI/CD Pipeline & Release Engineering Skill
 
-An end-to-end engineering standard and operational guide for automating Continuous Integration (CI) and Continuous Delivery/Deployment (CD) for Android applications.
+An end-to-end engineering standard and operational guide for automating Continuous Integration (CI) and Continuous Delivery/Deployment (CD) for Android applications across **Public and Private** repositories.
 
 ---
 
@@ -33,13 +33,13 @@ A production Android pipeline strictly separates **Continuous Integration** (pul
 │                                                                        │
 │  Validate Tag ──► Decode Keystore ──► Assemble Release (APK/AAB)       │
 │                                              │                         │
-│  Publish ◄── SHA-256 & Mapping ◄── apksigner (V2/V3/V4) ◄──────────────┘
+│  Publish ◄── SHA-256 & version.json ◄── apksigner (V2/V3/V4) ◄────────┘
 │                                              │
-│                 ┌────────────────────────────┼─────────────────────────┐
-│                 ▼                            ▼                         ▼
-│         Track A: Direct APK          Track B: Google Play      Track C: Firebase
-│         GitHub Releases +            Internal / Alpha /        App Distribution
-│         version.json Metadata        Production Track          (QA Testers)
+│        ┌─────────────────────────────────────┼─────────────────────────┐
+│        ▼                                     ▼                         ▼
+│  Track A: Direct APK                 Track B: Google Play      Track C: Firebase
+│  GitHub Releases +                   Internal / Alpha /        App Distribution
+│  version.json (Public / Private)     Production Track          (QA Testers)
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,46 +49,99 @@ A production Android pipeline strictly separates **Continuous Integration** (pul
 3. **Every Release is Traceable**: Every published artifact must map directly to an immutable Git commit, a monotonic integer `versionCode`, a SemVer `versionName`, and a SHA-256 cryptographic checksum.
 4. **Android Rejects Downgrades**: Android OS blocks installing older APKs over newer ones (`INSTALL_FAILED_VERSION_DOWNGRADE`). Rollbacks are executed as **fix-forward releases** with an incremented `versionCode`.
 5. **Data Preservation Over Code**: App updates must never destroy local SQLite/Room databases, DataStore preferences, or user files.
+6. **No Client Secrets in Private Repos**: When distributing private repository APKs, the client app must NEVER contain GitHub Personal Access Tokens (PAT). Distribution must occur through an authenticated proxy backend.
 
 ---
 
-## 2. Repository & Gradle Configuration Foundation
+## 2. Public vs. Private Repository Distribution Architecture
 
-### Project Directory Structure
+Direct APK distribution differs fundamentally between public and private repositories:
+
 ```text
-your-android-repo/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml                 # PR & branch validation workflow
-│       └── release.yml            # Tagged production release workflow
-├── app/
-│   ├── src/
-│   │   ├── main/                  # Application source code & AndroidManifest.xml
-│   │   ├── test/                  # JVM Unit Tests
-│   │   └── androidTest/           # Instrumented / UI tests
-│   ├── build.gradle.kts           # App-level build definition
-│   └── proguard-rules.pro         # R8 / ProGuard obfuscation rules
-├── gradle/
-│   └── wrapper/
-│       ├── gradle-wrapper.jar
-│       └── gradle-wrapper.properties
-├── build.gradle.kts               # Root build definition
-├── settings.gradle.kts            # Plugin & module management
-├── gradle.properties              # JVM memory & build flags
-└── README.md
+=== PUBLIC REPOSITORY ARCHITECTURE ===
+[Android App] ──────────► GET api.github.com/repos/{owner}/{repo}/releases/latest
+      │                   (Returns public metadata + browser_download_url)
+      ▼
+[Android App] ──────────► Direct Download from GitHub CDN (No token needed)
+      │
+      ▼
+Verify SHA-256 ──► Install via FileProvider
+
+
+=== PRIVATE REPOSITORY ARCHITECTURE (SECURE PROXY PATTERN) ===
+[Android App] ──────────► GET https://backend.myorg.com/api/v1/app/version
+                                  │
+                                  ▼
+                            [Proxy Backend] (Holds GITHUB_TOKEN securely in env)
+                                  │ Calls GitHub API with Bearer Token
+                                  ▼
+[Android App] ◄────────── Returns version metadata (versionCode, SHA-256, downloadUrl)
+      │
+      ▼
+[Android App] ──────────► GET https://backend.myorg.com/api/v1/app/download
+                                  │
+                                  ▼
+                            [Proxy Backend]
+                            Streams binary from:
+                            GET api.github.com/.../releases/assets/{asset_id}
+                            Header: Authorization: Bearer ${GITHUB_TOKEN}
+                            Header: Accept: application/octet-stream
+                                  │
+[Android App] ◄────────── Streams APK bytes to local storage
+      │
+      ▼
+Verify SHA-256 ──► Install via FileProvider
 ```
 
-### `gradle.properties` Performance Optimization
-Ensure reproducible, parallel, and cached builds in CI runners:
-```properties
-org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseG1GC
-org.gradle.parallel=true
-org.gradle.caching=true
-org.gradle.configuration-cache=true
-android.useAndroidX=true
+### Why the Proxy Pattern is Mandatory for Private Repos
+- GitHub Release downloads for private repos require `Authorization: Bearer <GITHUB_TOKEN>` with `Accept: application/octet-stream`.
+- Direct links (`browser_download_url`) return `404 Not Found` to unauthenticated browsers or apps.
+- Decompiling an Android APK takes seconds (`jadx`). Any token placed in `BuildConfig`, strings, or assets is immediately compromised.
+- The proxy backend acts as a security boundary: authenticates client requests, retrieves the asset using server-side secrets, and streams the binary to the device.
+
+---
+
+## 3. Repository & Keystore Foundation
+
+### `.gitattributes` Binary Enforcement (CRITICAL)
+Git line-ending conversions (CRLF ↔ LF) will corrupt binary keystores and cause `INSTALL_FAILED_UPDATE_INCOMPATIBLE` ("package conflicts with existing package").
+Create `.gitattributes` in the repository root before adding any binary files:
+
+```gitattributes
+*.keystore binary
+*.jks binary
+*.p12 binary
+*.apk binary
+*.aab binary
+*.jar binary
 ```
 
-### App-level `app/build.gradle.kts` Blueprint
+### Keystore Generation & Base64 Secret Export
+1. **Generate Production Keystore**:
+   ```bash
+   keytool -genkeypair -v -keystore release.keystore \
+     -alias mykeyalias -keyalg RSA -keysize 2048 -validity 10000 \
+     -storepass "MyStrongPassword123" -keypass "MyStrongPassword123" \
+     -dname "CN=My Org, OU=Engineering, O=My Org, L=City, S=State, C=US"
+   ```
+
+2. **Encode to Base64 (Single Line)**:
+   - **Linux / macOS**:
+     ```bash
+     base64 -w 0 release.keystore > keystore_base64.txt
+     ```
+   - **Windows PowerShell**:
+     ```powershell
+     [Convert]::ToBase64String([IO.File]::ReadAllBytes('release.keystore')) | Out-File -Encoding ascii -NoNewline keystore_base64.txt
+     ```
+
+3. **Verify Fingerprint Before Uploading**:
+   ```bash
+   keytool -list -v -keystore release.keystore -alias mykeyalias -storepass "MyStrongPassword123"
+   ```
+   Save the SHA-256 certificate fingerprint in your records. Every future release must have the identical fingerprint.
+
+### `app/build.gradle.kts` Configuration
 ```kotlin
 plugins {
     alias(libs.plugins.android.application)
@@ -97,16 +150,14 @@ plugins {
 
 android {
     namespace = "com.example.myapp"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.myapp"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
 
-        // Integer monotonically incremented for every release
         versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
-        // Human-facing semantic version string
         versionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -114,7 +165,6 @@ android {
 
     signingConfigs {
         create("release") {
-            // Populated from environment variables during CI execution
             storeFile = file(System.getenv("KEYSTORE_PATH") ?: "dummy.keystore")
             storePassword = System.getenv("KEYSTORE_PASSWORD")
             keyAlias = System.getenv("KEY_ALIAS")
@@ -134,7 +184,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Use release signing config only if keystore is present
             if (System.getenv("KEYSTORE_PATH") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -144,22 +193,15 @@ android {
             isDebuggable = true
         }
     }
-
-    testOptions {
-        unitTests {
-            isIncludeAndroidResources = true
-            isReturnDefaultValues = true
-        }
-    }
 }
 ```
 
 ---
 
-## 3. Continuous Integration (CI) Workflow
+## 4. Continuous Integration (CI) Workflow
 
 File: `.github/workflows/ci.yml`
-Triggers on Pull Requests and pushes to `main`. It validates compilation, code quality, and test health without exposing production signing keys.
+Validates code on PRs and main merges without exposing release credentials.
 
 ```yaml
 name: Android CI
@@ -206,15 +248,7 @@ jobs:
       - name: Build Verification (Debug APK)
         run: ./gradlew assembleDebug
 
-      - name: Upload Lint Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-report
-          path: app/build/reports/lint-results-debug.html
-          retention-days: 7
-
-      - name: Upload Unit Test Results
+      - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -225,10 +259,10 @@ jobs:
 
 ---
 
-## 4. Continuous Delivery (CD) Workflow
+## 5. Continuous Delivery (CD) Workflow
 
 File: `.github/workflows/release.yml`
-Triggers when a release tag (e.g. `v1.2.0`) is pushed or manually triggered. Decodes signing secrets, builds release APK & AAB, computes cryptographic hashes, and creates a tagged GitHub Release.
+Handles tagged releases (`v*.*.*`) and manual dispatch. Generates release binaries, verifies signatures, creates `version.json` metadata, and publishes assets. Works for both public and private repositories.
 
 ```yaml
 name: Android CD Release
@@ -240,13 +274,13 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Semantic Version Name (e.g. 1.2.0)'
+        description: 'Semantic Version Name (e.g. 1.0.1)'
         required: true
-        default: '1.2.0'
+        default: '1.0.1'
       version_code:
-        description: 'Monotonic Version Code (e.g. 12)'
-        required: true
-        default: '12'
+        description: 'Monotonic Version Code (leave empty to use git commit count)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -277,19 +311,21 @@ jobs:
       - name: Resolve Release Versions
         id: versioning
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V_NAME="${{ github.event.inputs.version_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version_code }}" ]; then
             V_CODE="${{ github.event.inputs.version_code }}"
           else
-            # Extract version from Git tag v1.2.0 -> 1.2.0
-            RAW_TAG="${GITHUB_REF#refs/tags/v}"
-            V_NAME="$RAW_TAG"
-            # Extract numeric version code (e.g. commit count or derived integer)
             V_CODE=$(git rev-list --count HEAD)
           fi
-          echo "Building versionName: $V_NAME, versionCode: $V_CODE"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V_NAME="${{ github.event.inputs.version_name }}"
+          else
+            V_NAME="${GITHUB_REF#refs/tags/v}"
+          fi
+
           echo "version_name=$V_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
+          echo "Building versionName: $V_NAME, versionCode: $V_CODE"
 
       - name: Decode Production Keystore
         env:
@@ -308,14 +344,15 @@ jobs:
             -PversionName="${{ steps.versioning.outputs.version_name }}" \
             -PversionCode="${{ steps.versioning.outputs.version_code }}"
 
-      - name: Securely Wipe Keystore File
+      - name: Securely Wipe Keystore
         if: always()
         run: rm -f /tmp/release.keystore
 
-      - name: Package Artifacts & Checksums
+      - name: Package Artifacts & Calculate Checksums
         id: artifacts
         run: |
           VERSION="${{ steps.versioning.outputs.version_name }}"
+          CODE="${{ steps.versioning.outputs.version_code }}"
           APK_SRC=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           AAB_SRC=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -n 1)
           MAPPING_SRC="app/build/outputs/mapping/release/mapping.txt"
@@ -329,15 +366,23 @@ jobs:
           APK_SHA256=$(sha256sum "$APK_DEST" | awk '{print $1}')
           AAB_SHA256=$(sha256sum "$AAB_DEST" | awk '{print $1}')
 
-          echo "APK SHA256: $APK_SHA256"
-          echo "AAB SHA256: $AAB_SHA256"
+          # Generate standardized version.json manifest
+          cat <<EOF > version.json
+          {
+            "versionCode": $CODE,
+            "versionName": "$VERSION",
+            "sha256": "$APK_SHA256",
+            "apkFileName": "$APK_DEST",
+            "releaseNotes": "Release v$VERSION (Build $CODE)"
+          }
+          EOF
 
           echo "apk_path=$APK_DEST" >> $GITHUB_OUTPUT
           echo "aab_path=$AAB_DEST" >> $GITHUB_OUTPUT
           echo "apk_sha256=$APK_SHA256" >> $GITHUB_OUTPUT
           echo "mapping_path=$MAPPING_SRC" >> $GITHUB_OUTPUT
 
-      - name: Verify APK Signature (apksigner)
+      - name: Verify Signature with apksigner
         run: |
           $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "${{ steps.artifacts.outputs.apk_path }}"
 
@@ -350,130 +395,178 @@ jobs:
             ${{ steps.artifacts.outputs.apk_path }}
             ${{ steps.artifacts.outputs.aab_path }}
             ${{ steps.artifacts.outputs.mapping_path }}
+            version.json
           body: |
             ## Android Release v${{ steps.versioning.outputs.version_name }} (Code: ${{ steps.versioning.outputs.version_code }})
-
-            ### Checksums & Verification
-            - **APK (`${{ steps.artifacts.outputs.apk_path }}`):**
-              `SHA-256: ${{ steps.artifacts.outputs.apk_sha256 }}`
+            - **APK:** `${{ steps.artifacts.outputs.apk_path }}`
+            - **SHA-256:** `${{ steps.artifacts.outputs.apk_sha256 }}`
             - **Commit:** `${{ github.sha }}`
-
-            ### Changelog
-            See git commit history for full details.
           draft: false
           prerelease: false
+
+      - name: Notify Backend (Optional / Best Effort)
+        if: env.BACKEND_WEBHOOK_URL != ''
+        env:
+          BACKEND_WEBHOOK_URL: ${{ secrets.BACKEND_WEBHOOK_URL }}
+        continue-on-error: true
+        run: |
+          curl -s -X POST "$BACKEND_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d @version.json || echo "Webhook notification skipped or unreachable"
 ```
 
 ---
 
-## 5. Multi-Track Distribution Strategies
+## 6. Backend Integration Patterns (Public vs. Private)
 
-### Track A: Direct APK Distribution (Private & Enterprise Apps)
-For applications distributed directly outside Google Play (~100 users, enterprise, or internal tools):
-1. **GitHub Releases Hosting**: The APK is published as a GitHub Release asset with an immutable download URL:
-   `https://github.com/<owner>/<repo>/releases/download/v<version>/app-release-v<version>.apk`
-2. **Version Manifest Endpoint (`version.json`)**: A static JSON metadata file is updated during release:
-   ```json
-   {
-     "versionCode": 12,
-     "versionName": "1.2.0",
-     "downloadUrl": "https://github.com/myorg/myapp/releases/download/v1.2.0/app-release-v1.2.0.apk",
-     "sha256": "4b6f12a95c3b1e7...48d1",
-     "isMandatory": false,
-     "releaseNotes": "• Real-time sync engine\n• Database performance enhancements\n• Bug fixes"
-   }
-   ```
-3. **In-App Client Update Engine (MVVM)**:
-   - The app checks `version.json` over HTTPS.
-   - Compares integer codes: `if (remote.versionCode > BuildConfig.VERSION_CODE)`.
-   - Downloads the APK with progress streaming and validates the SHA-256 hash.
-   - Hands off the APK to Android's `PackageInstaller` via `FileProvider` (`Intent.ACTION_VIEW` with `FLAG_GRANT_READ_URI_PERMISSION`).
+### FastAPI Proxy Implementation (Supports Public & Private Repos)
+```python
+import os
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from contextlib import asynccontextmanager
 
-### Track B: Google Play Store Track Publishing
-To automatically distribute `.aab` bundles to Google Play tracks (Internal Testing, Alpha, Beta, Production), add the Google Play step to `release.yml`:
+GITHUB_REPO = os.getenv("GITHUB_REPO", "myorg/my-android-app")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Required for private repos, optional for public
+IS_PRIVATE = os.getenv("IS_PRIVATE_REPO", "false").lower() == "true"
 
-```yaml
-      - name: Upload to Google Play Track
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_CONSOLE_SERVICE_ACCOUNT_JSON }}
-          packageName: com.example.myapp
-          releaseFiles: ${{ steps.artifacts.outputs.aab_path }}
-          track: internal # Options: internal, alpha, beta, production
-          mappingFile: ${{ steps.artifacts.outputs.mapping_path }}
-          status: completed
-```
+state = {
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "downloadUrl": "",
+    "sha256": "",
+    "assetId": None
+}
 
-### Track C: Firebase App Distribution (Internal QA)
-To push debug or staging APKs directly to test groups on every merge to `main`:
+def get_headers():
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    return headers
 
-```yaml
-      - name: Upload to Firebase App Distribution
-        uses: wzieba/Firebase-Distribution-Github-Action@v1
-        with:
-          appId: ${{ secrets.FIREBASE_APP_ID }}
-          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          groups: internal-testers
-          file: ${{ steps.artifacts.outputs.apk_path }}
-          releaseNotes: "Automated CI/CD build from commit ${{ github.sha }}"
+async def sync_latest_release():
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers=get_headers())
+        if resp.status_code != 200:
+            return
+        data = resp.json()
+        
+        # Locate APK and version.json assets
+        apk_asset = next((a for a in data.get("assets", []) if a["name"].endswith(".apk")), None)
+        version_asset = next((a for a in data.get("assets", []) if a["name"] == "version.json"), None)
+        
+        if version_asset:
+            v_headers = get_headers()
+            if GITHUB_TOKEN:
+                v_headers["Accept"] = "application/octet-stream"
+            v_resp = await client.get(version_asset["url"] if GITHUB_TOKEN else version_asset["browser_download_url"], headers=v_headers)
+            if v_resp.status_code == 200:
+                v_data = v_resp.json()
+                state["versionCode"] = v_data.get("versionCode", 1)
+                state["versionName"] = v_data.get("versionName", data.get("tag_name", "").lstrip("v"))
+                state["sha256"] = v_data.get("sha256", "")
+
+        if apk_asset:
+            state["assetId"] = apk_asset["id"]
+            if IS_PRIVATE:
+                # App downloads via backend proxy endpoint
+                state["downloadUrl"] = "/api/v1/app/download"
+            else:
+                # App downloads directly from GitHub CDN
+                state["downloadUrl"] = apk_asset["browser_download_url"]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-sync state on container/server startup
+    await sync_latest_release()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/api/v1/app/version")
+async def get_version():
+    return state
+
+@app.get("/api/v1/app/download")
+async def proxy_download():
+    """Streams APK from private GitHub release without exposing token to mobile client."""
+    if not state["assetId"]:
+        raise HTTPException(status_code=404, detail="No release asset available")
+    
+    asset_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/assets/{state['assetId']}"
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/octet-stream"}
+    
+    client = httpx.AsyncClient()
+    req = client.build_request("GET", asset_url, headers=headers)
+    resp = await client.send(req, stream=True)
+    
+    return StreamingResponse(
+        resp.aiter_bytes(),
+        status_code=resp.status_code,
+        headers={"Content-Type": "application/vnd.android.package-archive"}
+    )
 ```
 
 ---
 
-## 6. Local Data Preservation & Room Migrations
+## 7. In-App Client Update Engine (Android / Kotlin)
 
-Updating an application must never result in data loss. Android preserves the app's internal sandbox (`/data/data/<package_id>/`) across updates as long as the package ID and signing key remain identical.
+### Unit-Testable String & Status Contract
+To prevent test drift between ViewModel updates and test assertions:
+```kotlin
+object UpdateStrings {
+    const val STATUS_IDLE = "Ready"
+    const val STATUS_CHECKING = "Checking for updates..."
+    const val STATUS_UP_TO_DATE = "App is up to date"
+    const val STATUS_DOWNLOADING = "Downloading update..."
+    const val STATUS_VERIFYING = "Verifying package integrity..."
+    const val STATUS_READY_TO_INSTALL = "Ready to install"
+    const val STATUS_ERROR_NETWORK = "Failed to connect to update server"
+    const val STATUS_ERROR_CORRUPT = "Downloaded file failed SHA-256 integrity check"
+}
 
-### Room SQLite Migration Protocol
-1. **Never use `fallbackToDestructiveMigration()` in production**: Doing so wipes all user SQLite tables when the schema version changes.
-2. **Explicit Migration Objects**: Always write and register explicit migrations:
-   ```kotlin
-   val MIGRATION_1_2 = object : Migration(1, 2) {
-       override fun migrate(db: SupportSQLiteDatabase) {
-           db.execSQL("ALTER TABLE UserEntity ADD COLUMN email TEXT DEFAULT '' NOT NULL")
-       }
-   }
-   ```
-3. **Automated Migration Testing**: Use `MigrationTestHelper` in `app/src/test` to verify migrations against real SQLite databases before cutting a release:
-   ```kotlin
-   @RunWith(AndroidJUnit4::class)
-   class DatabaseMigrationTest {
-       @get:Rule
-       val helper = MigrationTestHelper(
-           InstrumentationRegistry.getInstrumentation(),
-           AppDatabase::class.java
-       )
+sealed class UpdateStatus {
+    object Idle : UpdateStatus()
+    object Checking : UpdateStatus()
+    object UpToDate : UpdateStatus()
+    data class UpdateAvailable(val version: String, val code: Int) : UpdateStatus()
+    data class Downloading(val progressPercent: Int) : UpdateStatus()
+    data class ReadyToInstall(val apkFile: File) : UpdateStatus()
+    data class Error(val message: String) : UpdateStatus()
+}
+```
 
-       @Test
-       fun migrate1To2_containsCorrectData() {
-           var db = helper.createDatabase("test-db", 1).apply {
-               execSQL("INSERT INTO UserEntity (id, name) VALUES (1, 'Alice')")
-               close()
-           }
-           db = helper.runMigrationsAndValidate("test-db", 2, true, MIGRATION_1_2)
-           // Assert Alice still exists and has email column populated
-       }
-   }
-   ```
+### SHA-256 Stream Verification & Installation Flow
+```kotlin
+fun verifySha256(file: File, expectedHash: String): Boolean {
+    if (expectedHash.isBlank()) return false
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(8192)
+        var bytesRead: Int
+        while (input.read(buffer).also { bytesRead = it } != -1) {
+            digest.update(buffer, 0, bytesRead)
+        }
+    }
+    val calculated = digest.digest().joinToString("") { "%02x".format(it) }
+    return calculated.equals(expectedHash.trim(), ignoreCase = true)
+}
 
----
-
-## 7. Security & Secrets Management Guardrails
-
-### Secrets Inventory in GitHub Repository Settings
-| Secret Name | Purpose | Scope |
-| :--- | :--- | :--- |
-| `KEYSTORE_BASE64` | Base64 string of the production `.jks` file | Release CD only |
-| `KEYSTORE_PASSWORD` | Password unlocking the keystore container | Release CD only |
-| `KEY_ALIAS` | Alias identifying the signing private key | Release CD only |
-| `KEY_PASSWORD` | Password unlocking the private key | Release CD only |
-| `PLAY_CONSOLE_SERVICE_ACCOUNT_JSON` | Google Play Developer API service credentials | Store deployment |
-
-### Non-Negotiable Security Rules
-* **Never commit keystores or credentials into Git**: Add `*.jks`, `*.keystore`, and `keystore_base64.txt` to `.gitignore`.
-* **Zero Secrets in the APK**: Never embed GitHub Personal Access Tokens or cloud admin credentials in client source code or assets.
-* **Keep an Offline Keystore Backup**: If the production keystore is permanently lost, no future updates can ever be installed on existing users' devices. Store an encrypted copy outside of GitHub.
-* **Least-Privilege GitHub Permissions**: Set default repository permissions to read-only, granting `contents: write` only to the release job for uploading assets.
+fun launchPackageInstaller(context: Context, apkFile: File) {
+    val contentUri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        apkFile
+    )
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(contentUri, "application/vnd.android.package-archive")
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+    }
+    context.startActivity(intent)
+}
+```
 
 ---
 
@@ -484,65 +577,38 @@ The Android `PackageManager` strictly checks `installedVersionCode`. If an incom
 ```text
 INSTALL_FAILED_VERSION_DOWNGRADE
 ```
-Users cannot downgrade without uninstalling the app, which completely deletes all local databases and user settings.
+Users cannot downgrade without uninstalling the app, which completely deletes all local SQLite/Room databases and DataStore settings.
 
-### The Standard Fix-Forward Procedure
-When a defective release (e.g. `v1.2.0` with `versionCode = 12`) reaches devices:
-
-1. **Step 1: Halt Ingestion / Update Metadata**:
-   Immediately update `version.json` or pause the Google Play track to prevent additional users from receiving `versionCode = 12`.
-2. **Step 2: Revert Defective Code in Git**:
+### The Fix-Forward Procedure
+1. **Step 1: Point Backend / Manifest to Safe State**:
+   Update `version.json` on the server to stop routing devices to the broken version.
+2. **Step 2: Revert Defective Code**:
    ```bash
    git checkout main
    git revert <defective_commit_hash>
    ```
-3. **Step 3: Increment `versionCode` (Fix-Forward)**:
-   Set `versionCode = 13` and `versionName = 1.2.1`.
+3. **Step 3: Increment Version Tag & Code**:
+   Increment `versionName` (e.g. `v1.0.6`) and ensure `versionCode` is higher than the defective release.
 4. **Step 4: Tag & Trigger Release**:
    ```bash
-   git tag v1.2.1
-   git push origin v1.2.1
+   git tag v1.0.6
+   git push origin v1.0.6
    ```
-5. **Step 5: Publish v1.2.1**:
-   GitHub Actions builds, signs, and publishes `versionCode = 13`. Both users on `v1.1.0` (code 11) and affected users on `v1.2.0` (code 12) seamlessly update to `13` with zero data loss!
+5. All devices upgrade cleanly to `v1.0.6` without data loss.
 
 ---
 
-## 9. Release Verification Checklist & Definition of Done
+## 9. Comprehensive Troubleshooting & Diagnostic Matrix
 
-A release is marked **Production-Ready** only when all conditions are fulfilled:
-
-```text
-[ ] CI Quality Gates
-    [ ] Lint passes with zero errors (lintDebug)
-    [ ] All JVM unit tests pass (testDebugUnitTest)
-    [ ] Gradle dependency cache functions properly
-
-[ ] Release Build & Signature
-    [ ] Keystore decodes and signs release APK & AAB
-    [ ] apksigner verify confirms V2/V3/V4 signatures are valid
-    [ ] ProGuard/R8 mapping.txt is archived as an artifact
-    [ ] SHA-256 checksums are calculated and logged
-
-[ ] Upgrade & Data Preservation Verification
-    [ ] APK upgrades cleanly over the previous release on a test device
-    [ ] Existing Room/SQLite records survive the upgrade intact
-    [ ] In-app update check recognizes the new versionCode
-
-[ ] Recovery & Distribution
-    [ ] Artifacts uploaded to designated track (GitHub Release / Play Console / Firebase)
-    [ ] Fix-forward rollback path is documented and operational
-```
-
----
-
-## 10. Troubleshooting & Diagnostic Runbook
-
-| Symptom / Error | Root Cause | Solution |
+| Symptom / Error | Root Cause | Permanent Solution |
 | :--- | :--- | :--- |
-| `OutOfMemoryError: Java heap space` in CI | Gradle runner exceeded memory limit | Add `org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g` to `gradle.properties`. |
-| `Lint found errors in the project; aborting build` | Unhandled lint warnings or errors | Run `./gradlew lintDebug` locally. Fix issues or configure `lint { abortOnError = false }` only for non-critical rules. |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Signing key or package ID does not match installed app | Ensure the CI keystore (`KEY_ALIAS`, `.jks`) exactly matches the key used to sign the currently installed release. |
-| `apksigner: command not found` | Android build-tools not in PATH | Call via `$ANDROID_HOME/build-tools/<version>/apksigner` inside runner scripts. |
-| `FileProvider: IllegalArgumentException: Failed to find configured root` | `file_paths.xml` does not match the download directory | Match the download location with `<external-files-path path="Download/" />` or `<cache-path />`. |
-| `Keystore was tampered with, or password was incorrect` | Corrupted base64 secret or incorrect password | Re-encode keystore with `base64 -w 0 release.keystore` and verify secrets in GitHub Settings. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` ("package conflicts with existing package") | Keystore mismatch or Git CRLF binary corruption between builds. | 1. Ensure `.gitattributes` marks `*.keystore binary`.<br>2. Decode keystore base64 without line breaks.<br>3. Verify fingerprint using `keytool -list -v -keystore release.keystore`. |
+| App never detects update ("Up to date" false negative) | Remote `versionCode` in metadata is lower than or equal to local `BuildConfig.VERSION_CODE`. | 1. Use `git rev-list --count HEAD` for monotonic codes.<br>2. Ensure backend syncs from `version.json` asset on boot.<br>3. Verify `latestVersionCode > BuildConfig.VERSION_CODE`. |
+| HTTP 404 / 401 when downloading APK from Private Repo | GitHub direct download URLs require authorization for private repositories. | Use **Proxy Backend Pattern**: Backend retrieves asset via GitHub API with `Bearer ${GITHUB_TOKEN}` and streams bytes to client. Never put token in client. |
+| CI Unit tests fail after UI/Feature changes | Test assertions hardcode divergent UI strings. | Centralize strings in `UpdateStrings` object; reference identical constants in both prod and test suites. |
+| Backend serves stale version after container restart | State stored only in memory without persistence or startup discovery. | Implement FastAPI `lifespan` handler that queries GitHub API on container startup. |
+| APK installs fail with SHA-256 mismatch | Incomplete CI checksum generation or uppercase/lowercase hash comparison error. | Calculate SHA-256 in CI runner; write to `version.json`; use `equalsIgnoreCase()` in client verification. |
+| CI runner fails on LAN webhook notification | Cloud GitHub Actions runner cannot reach private RFC1918 LAN IP (`192.168.x.x`). | Set `continue-on-error: true` on webhook step. Use startup sync or Cloudflare tunnel for automated notification. |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | Attempted rollback to a previous version code. | Follow Fix-Forward protocol: revert code in Git, tag new release with incremented `versionCode`. |
+| `FileProvider: IllegalArgumentException: Failed to find configured root` | File saved outside paths defined in `res/xml/file_paths.xml`. | Align download directory with `<external-files-path path="Download/" />` or `<cache-path />`. |
+| `apksigner: command not found` in CI | Android SDK build-tools not in PATH. | Invoke via `$ANDROID_HOME/build-tools/<version>/apksigner` inside runner scripts. |
