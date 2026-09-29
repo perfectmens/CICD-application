@@ -1,0 +1,178 @@
+# ==============================================================================
+# API MAPPING REGISTRY (api-mapping.yaml)
+# Single Source of Truth for Application API Contracts and Client Mappings
+# ==============================================================================
+
+version: "1.0"
+
+api:
+  base_url: "/api"
+  version: "v1"
+  title: "Remote Update Demo API Governance Registry"
+  description: >
+    Central registry defining all API endpoints, Android client actions,
+    health checks, version verification contracts, and release metadata
+    for the Remote Update Demo system. Client connects via LAN; releases
+    are published through GitHub Actions and downloaded via the Internet.
+
+domains:
+  # ----------------------------------------------------------------------------
+  # SYSTEM & INFRASTRUCTURE DOMAIN
+  # ----------------------------------------------------------------------------
+  system:
+    description: "System health checks, diagnostics, and service connectivity"
+    endpoints:
+      health_check:
+        id: system.health.check
+        type: utility
+        purpose: "Validates backend service operational status and LAN connectivity"
+        api:
+          method: GET
+          path: /api/v1/health
+          auth:
+            required: false
+        parameters: []
+        response:
+          type: HealthResponse
+          status_code: 200
+          schema:
+            status: "string"
+            service: "string"
+            timestamp: "string"
+            version: "string"
+        consumers:
+          - mobile.remote_update.connection_indicator
+          - backend.docker.healthcheck
+
+  # ----------------------------------------------------------------------------
+  # UPDATES & RELEASE GOVERNANCE DOMAIN
+  # ----------------------------------------------------------------------------
+  updates:
+    description: "Application version checking, release manifests, and GitHub Actions distribution"
+    endpoints:
+      check_version:
+        id: version.update.check
+        type: transactional
+        purpose: "Evaluates the client's current version against the latest published GitHub Actions release"
+        api:
+          method: GET
+          path: /api/v1/version/check
+          auth:
+            required: false
+        parameters:
+          - name: current_version
+            type: string
+            in: query
+            required: true
+            description: "The semantic version name currently installed (e.g. 0.0.1)"
+          - name: version_code
+            type: integer
+            in: query
+            required: true
+            description: "The monotonic integer version code currently installed (e.g. 1)"
+        response:
+          type: UpdateCheckResponse
+          status_code: 200
+          schema:
+            latestVersionName: "string"
+            latestVersionCode: "integer"
+            hasUpdate: "boolean"
+            isMandatory: "boolean"
+            downloadUrl: "string"
+            sha256: "string"
+            releaseNotes: "string"
+            publishedAt: "string"
+        consumers:
+          - mobile.remote_update.check_button
+          - mobile.remote_update.viewmodel
+
+      latest_metadata:
+        id: version.metadata.latest
+        type: informational
+        purpose: "Retrieves complete release metadata and change notes for the latest build"
+        api:
+          method: GET
+          path: /api/v1/updates/latest
+          auth:
+            required: false
+        parameters: []
+        response:
+          type: ReleaseMetadataResponse
+          status_code: 200
+          schema:
+            versionName: "string"
+            versionCode: "integer"
+            minSupportedCode: "integer"
+            downloadUrl: "string"
+            sha256: "string"
+            releaseNotes: "string"
+            publishedAt: "string"
+        consumers:
+          - mobile.remote_update.metadata_viewer
+
+      github_release_publish:
+        id: version.github.publish
+        type: webhook
+        purpose: "Receives release notifications from GitHub Actions to update authoritative manifest with Internet download URL"
+        api:
+          method: POST
+          path: /api/v1/github/release-published
+          auth:
+            required: false
+        parameters: []
+        request:
+          type: GitHubReleasePayload
+          schema:
+            versionName: "string"
+            versionCode: "integer"
+            downloadUrl: "string"
+            sha256: "string"
+            releaseNotes: "string"
+        response:
+          type: GitHubReleaseResponse
+          status_code: 200
+        consumers:
+          - ci.github_actions.release_job
+
+      admin_update_version:
+        id: version.admin.update
+        type: transactional
+        purpose: "Administrative endpoint to simulate or publish new version manifest for testing"
+        api:
+          method: POST
+          path: /api/v1/admin/version
+          auth:
+            required: false
+        parameters: []
+        request:
+          type: VersionUpdateRequest
+          schema:
+            latestVersionName: "string"
+            latestVersionCode: "integer"
+            hasUpdate: "boolean"
+            isMandatory: "boolean"
+            downloadUrl: "string"
+            sha256: "string"
+            releaseNotes: "string"
+        response:
+          type: VersionUpdateResponse
+          status_code: 200
+        consumers:
+          - admin.version_simulator
+          - test.suite.integration
+
+      download_apk:
+        id: version.download.apk
+        type: binary
+        purpose: "Local fallback APK download endpoint when internet GitHub release is inaccessible"
+        api:
+          method: GET
+          path: /api/v1/updates/download/latest.apk
+          auth:
+            required: false
+        parameters: []
+        response:
+          type: BinaryStream
+          status_code: 200
+        consumers:
+          - mobile.remote_update.downloader
