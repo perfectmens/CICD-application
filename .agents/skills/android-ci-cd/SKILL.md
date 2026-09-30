@@ -1,12 +1,30 @@
 ---
 name: android-ci-cd
 family: software-delivery
-description: Comprehensive CI/CD automation, pipeline engineering, and release governance skill for Android applications. Use this skill whenever designing, building, troubleshooting, or optimizing Android Continuous Integration (Gradle builds, unit tests, Android Lint, static analysis, dependency scanning, build caching) and Continuous Delivery/Deployment (GitHub Actions workflows, keystore signing, GitHub Releases, Google Play publishing, Firebase App Distribution, direct APK delivery, in-app updates, Room database migrations, and rollback/fix-forward strategies). Supports both Public and Private GitHub repositories.
+description: Comprehensive CI/CD automation, pipeline engineering, and release governance skill for Android AND Flutter applications. Use this skill whenever designing, building, troubleshooting, or optimizing Continuous Integration (Gradle builds, Flutter builds, unit tests, Android Lint, static analysis, dependency scanning, build caching) and Continuous Delivery/Deployment (GitHub Actions workflows, keystore signing, GitHub Releases, Google Play publishing, Firebase App Distribution, direct APK delivery, in-app OTA updates, infinite update loop bugs, pubspec.yaml versioning, package_info_plus, Room database migrations, Docker backend setup, LAN networking, and rollback/fix-forward strategies). Supports both Public and Private GitHub repositories.
 ---
 
-# Android CI/CD Pipeline & Release Engineering Skill
+# Android & Flutter CI/CD Pipeline & Release Engineering Skill
 
-An end-to-end engineering standard and operational guide for automating Continuous Integration (CI) and Continuous Delivery/Deployment (CD) for Android applications across **Public and Private** repositories.
+An end-to-end engineering standard and operational guide for automating Continuous Integration (CI) and Continuous Delivery/Deployment (CD) for Android and Flutter applications across **Public and Private** repositories.
+
+---
+
+## 0. Flutter vs. Native Android — Key Pipeline Differences
+
+Choose the right toolchain before building your pipeline:
+
+| Concern | Native Android (Gradle) | Flutter |
+| :--- | :--- | :--- |
+| Build command | `./gradlew assembleRelease` | `flutter build apk --release` |
+| Version override at build time | `-PversionName=X -PversionCode=Y` | `--build-name=X --build-number=Y` |
+| Version in source file | `defaultConfig { versionCode }` in `build.gradle` | `version: X.Y.Z+N` in `pubspec.yaml` |
+| **pubspec.yaml version segments** | N/A | **MUST be exactly 3 segments** (`0.0.1+1`). `0.0.0.1+1` is **INVALID** and breaks `flutter pub get`. |
+| Runtime version read | `BuildConfig.VERSION_CODE` (compile-time constant) | `PackageInfo.fromPlatform()` via `package_info_plus` |
+| Signing | `signingConfigs{}` block in `build.gradle` | Key props via environment variables passed to `flutter build` |
+| CI extra setup | JDK 17 only | JDK 17 **plus** `subosito/flutter-action@v2` |
+| APK output path | `app/build/outputs/apk/release/` | `build/app/outputs/flutter-apk/` |
+| Dependency fetch | `./gradlew dependencies` | `flutter pub get` |
 
 ---
 
@@ -259,10 +277,174 @@ jobs:
 
 ---
 
-## 5. Continuous Delivery (CD) Workflow
+## 5. Continuous Delivery (CD) Workflows
+
+### 5a. Native Android (Gradle)
 
 File: `.github/workflows/release.yml`
-Handles tagged releases (`v*.*.*`) and manual dispatch. Generates release binaries, verifies signatures, creates `version.json` metadata, and publishes assets. Works for both public and private repositories.
+Handles tagged releases (`v*.*.*`) and manual dispatch. Generates release binaries, verifies signatures, creates `version.json` metadata, and publishes assets.
+
+> See full Gradle workflow YAML below.
+
+### 5b. Flutter CD Workflow
+
+File: `.github/workflows/release.yml`
+Differs from Gradle in toolchain setup, build command, and APK output path.
+
+```yaml
+name: Flutter CD Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Semantic Version (3 segments only: e.g. 1.0.1 — NOT 1.0.0.1)'
+        required: true
+        default: '0.0.1'
+      version_code:
+        description: 'Monotonic Version Code (leave empty to derive from git count)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Resolve Release Version
+        id: versioning
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version_code }}" ]; then
+            V_CODE="${{ github.event.inputs.version_code }}"
+          else
+            V_CODE=$(git rev-list --count HEAD)
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V_NAME="${{ github.event.inputs.version_name }}"
+          else
+            V_NAME="${GITHUB_REF#refs/tags/v}"
+          fi
+
+          echo "version_name=$V_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$V_CODE" >> $GITHUB_OUTPUT
+
+      - name: Prepare Signing Keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          KEYSTORE_DEST="/tmp/signing.keystore"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            # Use printf to avoid trailing newline that corrupts binary decode
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_DEST"
+          elif [ -f "release.keystore" ]; then
+            cp "release.keystore" "$KEYSTORE_DEST"
+          else
+            echo "❌ No keystore found — build will fail signing"; exit 1
+          fi
+          KEYSTORE_SIZE=$(stat -c%s "$KEYSTORE_DEST")
+          if [ "$KEYSTORE_SIZE" -lt 100 ]; then
+            echo "❌ Keystore corrupt (too small: ${KEYSTORE_SIZE} bytes)"; exit 1
+          fi
+          echo "keystore_path=$KEYSTORE_DEST" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Assemble Release APK
+        env:
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore_path }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.versioning.outputs.version_name }}" \
+            --build-number="${{ steps.versioning.outputs.version_code }}"
+
+      - name: Securely Wipe Keystore
+        if: always()
+        run: rm -f /tmp/signing.keystore
+
+      - name: Package Artifacts & Checksums
+        id: artifacts
+        run: |
+          VERSION="${{ steps.versioning.outputs.version_name }}"
+          CODE="${{ steps.versioning.outputs.version_code }}"
+          # Flutter outputs to a different directory than Gradle
+          APK_SRC=$(find build/app/outputs/flutter-apk/ -name "*release*.apk" | head -n 1)
+          APK_DEST="app-release-v${VERSION}.apk"
+          cp "$APK_SRC" "$APK_DEST"
+          APK_SHA256=$(sha256sum "$APK_DEST" | awk '{print $1}')
+
+          cat <<EOF > version.json
+          {
+            "versionCode": ${CODE},
+            "versionName": "${VERSION}",
+            "downloadUrl": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${APK_DEST}",
+            "sha256": "${APK_SHA256}",
+            "releaseNotes": "Release v${VERSION} (Build ${CODE})"
+          }
+          EOF
+
+          echo "apk_path=$APK_DEST" >> $GITHUB_OUTPUT
+          echo "apk_sha256=$APK_SHA256" >> $GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release v${{ steps.versioning.outputs.version_name }}"
+          tag_name: "v${{ steps.versioning.outputs.version_name }}"
+          make_latest: true
+          files: |
+            ${{ steps.artifacts.outputs.apk_path }}
+            version.json
+          body: |
+            ## Flutter Release v${{ steps.versioning.outputs.version_name }} (Build ${{ steps.versioning.outputs.version_code }})
+            - **APK:** `${{ steps.artifacts.outputs.apk_path }}`
+            - **SHA-256:** `${{ steps.artifacts.outputs.apk_sha256 }}`
+            - **Commit:** `${{ github.sha }}`
+          draft: false
+          prerelease: false
+
+      - name: Notify Backend of New Release
+        continue-on-error: true   # Runner is cloud; LAN backend unreachable — this is expected
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL || 'http://192.168.1.1:8080' }}
+        run: |
+          curl -s -X POST "${BACKEND_URL}/api/v1/github/release-published" \
+            -H "Content-Type: application/json" \
+            -d @version.json || echo "Backend notification skipped or unreachable from runner."
+```
+
+---
+
+### 5c. Native Android CD Workflow (Gradle)
 
 ```yaml
 name: Android CD Release
@@ -511,7 +693,76 @@ async def proxy_download():
 
 ---
 
+## 6b. Docker Backend — LAN-Wide Accessibility
+
+### Problem
+Docker's default port binding `"8080:8080"` may bind to loopback (`127.0.0.1`) only on some Linux hosts. Android devices on the same Wi-Fi cannot reach a loopback address — only the host machine can.
+
+### Fix: Bind Explicitly to All Interfaces
+```yaml
+# docker-compose.yml
+services:
+  backend:
+    ports:
+      - "0.0.0.0:8080:8080"   # Listens on ALL network interfaces — any LAN device can reach it
+```
+
+### Finding the Host LAN IP
+```bash
+hostname -I
+# Output: 10.77.x.x 192.168.68.78 172.17.0.1 ...
+# Use the 192.168.x.x address for devices on the same router
+```
+
+### Design for IP Flexibility
+LAN IPs change when the host reconnects or DHCP reassigns. Always allow users to change the server URL in-app (Settings panel), using the LAN IP as a default that can be overridden — never hardcode as the only option.
+
+### Verifying LAN Reachability
+```bash
+# From a second device on the same network:
+curl http://192.168.68.78:8080/api/v1/health
+# Should return: {"status": "ok", ...}
+```
+
+---
+
 ## 7. In-App Client Update Engine (Android / Kotlin)
+
+### ⚠️ Flutter: The Infinite Update Loop Bug
+
+This is Flutter's #1 OTA pitfall. The symptom: user installs a new version, the app relaunches, and immediately shows "update available" again — infinitely.
+
+**Root Cause**: The Flutter/Dart ViewModel reads a hardcoded compile-time constant (`AppConstants.currentVersionCode = 1`) instead of the *actual installed versionCode* from the Android package manager. After installing v2, the Dart code still reports `currentVersionCode = 1`, sees `server v2 > local v1`, and shows the update prompt forever.
+
+**Fix — use `package_info_plus` to read the real installed version at runtime:**
+
+```yaml
+# pubspec.yaml — add under dependencies: (NOT dev_dependencies)
+dependencies:
+  package_info_plus: ^8.0.0
+```
+
+```dart
+// In HomeViewModel — call at app startup before any update check
+Future<void> loadInitialData() async {
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    _currentVersionName = packageInfo.version;       // "1.0.1" — from installed APK manifest
+    _currentVersionCode = int.tryParse(packageInfo.buildNumber)  // "2" — from installed APK manifest
+        ?? AppConstants.currentVersionCode;           // Fallback to constant if platform call fails
+    notifyListeners();
+  } catch (_) {
+    // Fallback: keep constants, degraded mode — still better than crashing
+  }
+  await Future.wait([checkHealth(), fetchGreetings()]);
+}
+```
+
+**Why this works**: `PackageInfo.fromPlatform()` calls the Android package manager via a platform channel. It reads from the *installed APK's manifest* — not from Dart source code. After installing v2, `buildNumber` returns `"2"`, so the comparison `2 > 2` is false and the loop stops.
+
+**Rule**: Never compare update versions against a compile-time Dart constant. Always read from `PackageInfo.fromPlatform()` at startup.
+
+---
 
 ### Unit-Testable String & Status Contract
 To prevent test drift between ViewModel updates and test assertions:
@@ -612,3 +863,9 @@ Users cannot downgrade without uninstalling the app, which completely deletes al
 | `INSTALL_FAILED_VERSION_DOWNGRADE` | Attempted rollback to a previous version code. | Follow Fix-Forward protocol: revert code in Git, tag new release with incremented `versionCode`. |
 | `FileProvider: IllegalArgumentException: Failed to find configured root` | File saved outside paths defined in `res/xml/file_paths.xml`. | Align download directory with `<external-files-path path="Download/" />` or `<cache-path />`. |
 | `apksigner: command not found` in CI | Android SDK build-tools not in PATH. | Invoke via `$ANDROID_HOME/build-tools/<version>/apksigner` inside runner scripts. |
+| **[Flutter]** `pubspec.yaml: Invalid version: Could not parse "0.0.0.1+1"` | Flutter/Dart pub strictly requires **exactly 3-segment** semver (`MAJOR.MINOR.PATCH`). Four-segment versions are rejected by `flutter pub get`. | Use `0.0.1+1` in `pubspec.yaml`. Use `--build-name` in GitHub Actions to set the display version independently at compile time. |
+| **[Flutter]** Infinite update loop: installs new version, immediately shows update prompt again | App reads a hardcoded Dart constant (`AppConstants.currentVersionCode = 1`) instead of the real installed versionCode from the Android package manager. | Add `package_info_plus: ^8.0.0` to `dependencies:` (not `dev_dependencies:`). At startup, call `await PackageInfo.fromPlatform()` and use `int.tryParse(packageInfo.buildNumber)` as the current version for comparison. |
+| **[Flutter]** `git push` prompts for HTTPS credentials after `gh auth login` | Remote URL is `https://` but `gh auth login` configured SSH. The HTTPS credential helper was not wired. | Run `gh auth setup-git` after `gh auth login` to configure the HTTPS helper. Or switch remote: `git remote set-url origin git@github.com:owner/repo.git` then accept the SSH host fingerprint on first connect. |
+| **[Docker]** Android device cannot reach backend on LAN | Docker port bound to loopback (`127.0.0.1:8080`) instead of all interfaces. | Use `"0.0.0.0:8080:8080"` in `docker-compose.yml` ports. Verify with `curl http://<LAN-IP>:8080/api/v1/health` from a second device. |
+| **[Docker]** Backend shows old version data after new GitHub release | Docker container holds in-memory state from startup; was not restarted after release. | Run `docker compose down && docker compose up -d --build` after each release to force startup sync from GitHub API. |
+| `gh run view <ID>` returns HTTP 404 with a valid-looking ID | `gh run list` truncates long run IDs in display output. The truncated number is an invalid ID. | Extract the full ID with JSON: `gh run list --json databaseId -q ".[0].databaseId"` then pipe to `gh run view`. |
